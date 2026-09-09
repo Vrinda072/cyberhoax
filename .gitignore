@@ -2,4 +2,4 @@
 __pycache__/
 *.pyc
 .env
-runs/
+runs/_ckpt_*.json
