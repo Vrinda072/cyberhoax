@@ -31,10 +31,14 @@ def step(title: str, args: list[str], required: bool = False) -> bool:
 
 
 def main() -> int:
+    # trials=1 on purpose: one full before/after suite at trials=3 costs ~250k
+    # tokens, more than the gpt-oss-20b daily budget (200k). trials=1 (~80k) fits
+    # and is enough for a directional comparison - the rigorous trials=3 numbers
+    # for the primary model are already in the committed report.
     ok_naive = step("1/3  naive keyword-filter baseline",
-                    ["naive_defense.py", "--trials", "3"])
-    ok_cross = step("2/3  model cross-check",
-                    ["cross_check.py", "--trials", "2"])
+                    ["naive_defense.py", "--trials", "1"])
+    ok_cross = step("2/3  model cross-check (gpt-oss-20b vs gpt-oss-120b)",
+                    ["cross_check.py", "--trials", "1"])
 
     print(f"\n{'=' * 66}\n3/3  regenerate report / export / certificate\n{'=' * 66}",
           flush=True)
