@@ -60,6 +60,16 @@ st.markdown(
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; }
       [data-testid="stMetricValue"] { font-size: 1.9rem; }
       .stTabs [data-baseweb="tab"] { font-weight: 600; }
+      .cert {
+        border: 3px solid var(--c); border-radius: 12px; padding: 1rem 1.25rem;
+        margin-bottom: 1.2rem; background: color-mix(in srgb, var(--c) 7%, white);
+      }
+      .cert .stamp {
+        font-size: 1.35rem; font-weight: 800; letter-spacing: .08em;
+        color: var(--c); text-transform: uppercase;
+      }
+      .cert .row { font-size: .9rem; color: #334155; margin-top: .35rem; }
+      .cert .why { font-size: .92rem; color: #0f172a; margin-top: .5rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -199,12 +209,44 @@ def run_live(mode: str, trials: int, threshold: float) -> None:
 # ---------------------------------------------------------------------------
 # Tab renderers
 # ---------------------------------------------------------------------------
+def render_certificate() -> None:
+    """Stamped pass/fail card at the top of the summary view."""
+    from certificate import build_certificate
+
+    p = RUNS / "defended.json"
+    if not p.exists():
+        return
+    try:
+        cert = build_certificate(p)
+    except Exception:  # noqa: BLE001
+        return
+    color = {"PASS": "#059669", "CONDITIONAL PASS": "#d97706", "FAIL": "#dc2626"}.get(
+        cert["status"], "#64748b"
+    )
+    st.markdown(
+        f"<div class='cert' style='--c:{color}'>"
+        f"<div class='stamp'>Security certificate &nbsp;&mdash;&nbsp; {cert['status']}</div>"
+        f"<div class='row'>Residual risk "
+        f"<b>{cert['residual_risk_score']} / {cert['residual_risk_ceiling']}</b> "
+        f"({cert['residual_risk_band']}) &nbsp;&middot;&nbsp; "
+        f"false-positive rate <b>{cert['false_positive_rate']:.0f}%</b> &nbsp;&middot;&nbsp; "
+        f"bands: PASS &lt;{cert['thresholds']['pass_below']:.0f} / "
+        f"CONDITIONAL {cert['thresholds']['pass_below']:.0f}-{cert['thresholds']['fail_above']:.0f} / "
+        f"FAIL &gt;{cert['thresholds']['fail_above']:.0f}</div>"
+        f"<div class='why'>{cert['headline_reason']}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_overview(undef: dict | None, defd: dict | None) -> None:
     from severity import attack_risk, rationale_of, residual_risk, severity_of
 
     if not undef and not defd:
         st.info("No results yet. Load a saved run or use **Run suite** in the sidebar.")
         return
+
+    render_certificate()
 
     u_atk = undef["attacks"] if undef else []
     d_atk = defd["attacks"] if defd else []
@@ -346,6 +388,86 @@ def render_benign(defd: dict | None) -> None:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
+def render_comparison(undef: dict | None, defd: dict | None) -> None:
+    """None vs naive keyword filter vs classifier."""
+    from target_agent import format_transcript
+
+    if not undef or not defd:
+        st.info("Need undefended + defended runs.")
+        return
+    naive_p = RUNS / "naive.json"
+    if not naive_p.exists():
+        st.warning(
+            "`runs/naive.json` not found. Run the naive keyword-filter baseline:\n\n"
+            "```\n.venv/bin/python naive_defense.py --trials 3\n```\n"
+            "The naive filter is a static blocklist (\"ignore previous instructions\", "
+            "\"system override\", ...). It catches attacks using those phrases "
+            "verbatim but is blind to paraphrased / official-looking injections - "
+            "which is the whole point of comparing it against the classifier."
+        )
+        return
+
+    naive = json.loads(naive_p.read_text())
+    by = {
+        "none": {r["attack_id"]: r for r in undef["attacks"]},
+        "naive": {r["attack_id"]: r for r in naive["attacks"]},
+        "classifier": {r["attack_id"]: r for r in defd["attacks"]},
+    }
+    rank = {"blocked": 0, "partial": 1, "succeeded": 2, "error": -1}
+
+    st.markdown("#### Block rate by category")
+    cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
+    rows = []
+    for c in cats + ["ALL"]:
+        row = {"category": c}
+        for k, d in by.items():
+            vals = list(d.values()) if c == "ALL" else [r for r in d.values() if r["category"] == c]
+            b = sum(1 for r in vals if r["verdict"] == "blocked")
+            row[k] = round(100 * b / len(vals), 0) if vals else 0
+        rows.append(row)
+    df = pd.DataFrame(rows).set_index("category")
+    df.columns = ["no defense", "naive filter", "classifier"]
+    st.bar_chart(df, height=320, stack=False,
+                 color=["#94a3b8", "#f59e0b", "#059669"])
+    st.caption("% of attacks in each category fully blocked.")
+
+    worse = [
+        aid for aid, cr in by["classifier"].items()
+        if aid in by["naive"] and rank[by["naive"][aid]["verdict"]] > rank[cr["verdict"]]
+    ]
+    if worse:
+        st.error(
+            f"**Why naive filtering fails:** the naive filter does worse than the "
+            f"classifier on **{len(worse)}** attack(s): "
+            + ", ".join(f"`{a}`" for a in worse)
+            + " — these paraphrase the injection or frame it as an official notice, "
+            "so no blocklist phrase matches."
+        )
+
+    # side-by-side on one indirect attack the naive filter lets through
+    demo_id = next(
+        (a for a in worse if a.startswith("indirect")),
+        worse[0] if worse else None,
+    )
+    if demo_id:
+        st.markdown(f"#### Same attack, two defenses — `{demo_id}`")
+        cn, cc = st.columns(2)
+        with cn:
+            nr = by["naive"][demo_id]
+            st.markdown(f"**Naive keyword filter** {badge(nr['verdict'], nr['verdict'])}",
+                        unsafe_allow_html=True)
+            st.caption(nr.get("judge_reasoning", ""))
+            with st.expander("transcript"):
+                st.code(format_transcript(nr["transcript"]), language="text")
+        with cc:
+            cr = by["classifier"][demo_id]
+            st.markdown(f"**Classifier defense** {badge(cr['verdict'], cr['verdict'])}",
+                        unsafe_allow_html=True)
+            st.caption(cr.get("judge_reasoning", ""))
+            with st.expander("transcript"):
+                st.code(format_transcript(cr["transcript"]), language="text")
+
+
 def render_report() -> None:
     from report import generate_report
 
@@ -426,13 +548,15 @@ def main() -> None:
         src.append(f"defended ({'session' if 'defd' in st.session_state else 'saved'})")
     st.caption("Data: " + (" &nbsp;|&nbsp; ".join(src) if src else "none loaded"))
 
-    t_over, t_atk, t_benign, t_report = st.tabs(
-        ["Overview", "Attacks", "Benign / FP", "Report"]
+    t_over, t_atk, t_cmp, t_benign, t_report = st.tabs(
+        ["Overview", "Attacks", "Compare defenses", "Benign / FP", "Report"]
     )
     with t_over:
         render_overview(undef, defd)
     with t_atk:
         render_attacks(undef, defd)
+    with t_cmp:
+        render_comparison(undef, defd)
     with t_benign:
         render_benign(defd)
     with t_report:

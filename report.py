@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from certificate import build_certificate, render_certificate_md
 from harness.compare import category_comparison
 from severity import (
     SEVERITY_WEIGHT,
@@ -126,6 +127,68 @@ def _transcript_excerpt(
     return "\n".join(lines[:head] + ["... [middle elided] ..."] + lines[-tail:])
 
 
+def _block_rate(rows: list[dict]) -> str:
+    n = len(rows)
+    if not n:
+        return "-"
+    b = sum(1 for r in rows if r["verdict"] == "blocked")
+    return f"{b}/{n}"
+
+
+def _threeway_section(u_atk: list[dict], d_atk: list[dict]) -> list[str]:
+    """None vs naive keyword filter vs classifier - block rate per category.
+    Naive results are read from runs/naive.json if present."""
+    md = ["## 2b. Defense comparison - none vs naive keyword filter vs classifier", ""]
+    naive_path = RUNS_DIR / "naive.json"
+    if not naive_path.exists():
+        md.append(
+            "_`runs/naive.json` not found - run `python naive_defense.py --trials 3` "
+            "to populate this. The naive filter is a static keyword blocklist "
+            "(\"ignore previous instructions\", \"system override\", ...); it catches "
+            "attacks that use those phrases verbatim but is blind to paraphrased or "
+            "official-looking injections._"
+        )
+        md.append("")
+        return md
+    n_atk = json.loads(naive_path.read_text())["attacks"]
+    by = {
+        "none": {r["attack_id"]: r for r in u_atk},
+        "naive": {r["attack_id"]: r for r in n_atk},
+        "classifier": {r["attack_id"]: r for r in d_atk},
+    }
+    cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
+    md.append("Block rate (attacks fully blocked / attacks in category):")
+    md.append("")
+    md.append("| category | no defense | naive keyword filter | classifier defense |")
+    md.append("|---|---|---|---|")
+    for c in cats + ["ALL"]:
+        def pick(d):
+            vals = list(d.values())
+            return vals if c == "ALL" else [r for r in vals if r["category"] == c]
+        name = "**ALL**" if c == "ALL" else c
+        md.append(
+            f"| {name} | {_block_rate(pick(by['none']))} | "
+            f"{_block_rate(pick(by['naive']))} | {_block_rate(pick(by['classifier']))} |"
+        )
+    md.append("")
+    # attacks where naive does strictly worse than the classifier
+    worse = []
+    for aid, cr in by["classifier"].items():
+        nr = by["naive"].get(aid)
+        if nr and _RANK.get(nr["verdict"], 0) > _RANK.get(cr["verdict"], 0):
+            worse.append(f"`{aid}` (naive: {nr['verdict']}, classifier: {cr['verdict']})")
+    if worse:
+        md.append(
+            f"**Naive filter does worse than the classifier on {len(worse)} "
+            f"attack(s):** " + "; ".join(worse) + ". These paraphrase the injection "
+            "or frame it as an official notice, so no blocklist phrase matches."
+        )
+    else:
+        md.append("_Naive filter matched the classifier on every attack in this run._")
+    md.append("")
+    return md
+
+
 def _recommendation(d_atk: list[dict], fp_rate: float | str) -> str:
     succ = [r for r in d_atk if r["verdict"] == "succeeded"]
     part = [r for r in d_atk if r["verdict"] == "partial"]
@@ -207,6 +270,16 @@ def generate_report(
     md.append(_recommendation(d_atk, fp_rate))
     md.append("")
 
+    # Security certificate (right after the executive summary) ------------
+    try:
+        cert = build_certificate(defended_path)
+        md.append("### Security certificate")
+        md.append("")
+        md.append(render_certificate_md(cert))
+        md.append("")
+    except Exception:  # noqa: BLE001 - never let the certificate break the report
+        pass
+
     # 2. Per-attack results ----------------------------------------------
     md.append("## 2. Per-attack results")
     md.append("")
@@ -243,6 +316,9 @@ def generate_report(
             f"{residual_risk(src_d)['absolute']:.1f} |"
         )
     md.append("")
+
+    # 2b. three-way defense comparison --------------------------------
+    md.extend(_threeway_section(u_atk, d_atk))
 
     # 3. Residual risk score -------------------------------------------
     md.append("## 3. Residual risk score")
