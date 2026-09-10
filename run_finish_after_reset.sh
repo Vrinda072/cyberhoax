@@ -52,6 +52,11 @@ if [ -z "${GROQ_API_KEY:-}" ]; then
   exit 1
 fi
 
+if [ -n "${DRY_RUN:-}" ]; then
+  echo "$(date -u) DRY_RUN: preflight OK (repo=$REPO, key set, not yet complete) - would run finish_after_reset.py" >>"$LOG"
+  exit 0
+fi
+
 echo "$(date -u) ===== finish_after_reset.py start =====" >>"$LOG"
 ./.venv/bin/python finish_after_reset.py >>"$LOG" 2>&1
 rc=$?
