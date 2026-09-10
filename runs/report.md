@@ -69,7 +69,11 @@ Non-zero contributions after defense:
 
 ## 3b. Model cross-check (harness is model-agnostic)
 
-_`runs/cross_check.json` not found - run `python cross_check.py` to populate. The same 8-attack suite and defense logic run unchanged against a second Groq model (the swap knob is the `TARGET_MODEL` env var)._
+| target model | trials | residual risk (undefended) | residual risk (defended) |
+|---|---|---|---|
+| `openai/gpt-oss-20b` | primary | 13.5 / 24 | 1.5 / 24 |
+
+_Only the primary model has run. `python cross_check.py` adds a second Groq model (the swap knob is the `TARGET_MODEL` env var; the pipeline runs unchanged)._
 
 ## 4. Most dangerous attack that still gets through
 

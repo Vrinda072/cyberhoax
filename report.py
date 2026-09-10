@@ -189,41 +189,52 @@ def _threeway_section(u_atk: list[dict], d_atk: list[dict]) -> list[str]:
     return md
 
 
-def _cross_check_section() -> list[str]:
-    """Residual risk per target model, from runs/cross_check.json if present."""
+def _cross_check_section(
+    u_atk: list[dict], d_atk: list[dict], primary_model: str
+) -> list[str]:
+    """Residual risk per target model. Row 0 is the primary run (this report's
+    committed data); extra models come from runs/cross_check.json if present."""
     md = ["## 3b. Model cross-check (harness is model-agnostic)", ""]
+
+    ur, dr = residual_risk(u_atk), residual_risk(d_atk)
+    rows = [{
+        "model": primary_model,
+        "trials": "primary",
+        "u": ur["absolute"], "d": dr["absolute"], "ceiling": dr["ceiling"],
+    }]
     p = RUNS_DIR / "cross_check.json"
-    if not p.exists():
-        md.append(
-            "_`runs/cross_check.json` not found - run `python cross_check.py` to "
-            "populate. The same 8-attack suite and defense logic run unchanged "
-            "against a second Groq model (the swap knob is the `TARGET_MODEL` "
-            "env var)._"
-        )
-        md.append("")
-        return md
-    data = json.loads(p.read_text())
-    models = data.get("models", [])
+    if p.exists():
+        for m in json.loads(p.read_text()).get("models", []):
+            if m["model"] == primary_model:
+                continue
+            rows.append({
+                "model": m["model"], "trials": m["trials"],
+                "u": m["residual_risk_undefended"]["absolute"],
+                "d": m["residual_risk_defended"]["absolute"],
+                "ceiling": m["residual_risk_defended"]["ceiling"],
+            })
+
     md.append("| target model | trials | residual risk (undefended) | residual risk (defended) |")
     md.append("|---|---|---|---|")
-    for m in models:
-        u, d = m["residual_risk_undefended"], m["residual_risk_defended"]
-        md.append(
-            f"| `{m['model']}` | {m['trials']} | "
-            f"{u['absolute']:.1f} / {u['ceiling']} | {d['absolute']:.1f} / {d['ceiling']} |"
-        )
+    for r in rows:
+        md.append(f"| `{r['model']}` | {r['trials']} | "
+                  f"{r['u']:.1f} / {r['ceiling']} | {r['d']:.1f} / {r['ceiling']} |")
     md.append("")
-    if len(models) >= 2:
-        a, b = models[0], models[1]
+
+    if len(rows) >= 2:
+        a, b = rows[0], rows[1]
         md.append(
             f"This harness is model-agnostic - the same attack suite and defense "
-            f"logic surfaced {a['residual_risk_undefended']['absolute']:.1f} residual "
-            f"risk undefended / {a['residual_risk_defended']['absolute']:.1f} defended "
-            f"on `{a['model']}` vs "
-            f"{b['residual_risk_undefended']['absolute']:.1f} / "
-            f"{b['residual_risk_defended']['absolute']:.1f} on `{b['model']}`, "
-            f"demonstrating the tool generalizes rather than being tuned to one "
-            f"specific model."
+            f"logic surfaced {a['u']:.1f} residual risk undefended / {a['d']:.1f} "
+            f"defended on `{a['model']}` vs {b['u']:.1f} / {b['d']:.1f} on "
+            f"`{b['model']}`, demonstrating the tool generalizes rather than being "
+            f"tuned to one specific model."
+        )
+    else:
+        md.append(
+            "_Only the primary model has run. `python cross_check.py` adds a second "
+            "Groq model (the swap knob is the `TARGET_MODEL` env var; the pipeline "
+            "runs unchanged)._"
         )
     md.append("")
     return md
@@ -396,7 +407,7 @@ def generate_report(
     md.append("")
 
     # 3b. model cross-check ------------------------------------------
-    md.extend(_cross_check_section())
+    md.extend(_cross_check_section(u_atk, d_atk, u.get("target_model", "?")))
 
     # 4. Most dangerous attack still getting through ------------------
     md.append("## 4. Most dangerous attack that still gets through")
