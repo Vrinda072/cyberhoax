@@ -76,7 +76,11 @@ def main() -> int:
             print(f"  !! {m} failed: {exc}")
             errors.append(m)
 
-    (RUNS / "cross_check.json").write_text(
+    out = RUNS / "cross_check.json"
+    if not results and out.exists():
+        print(f"\nno model completed (quota). Keeping existing {out}.")
+        return 1
+    out.write_text(
         json.dumps({"trials": trials, "models": results, "errors": errors}, indent=2)
     )
 

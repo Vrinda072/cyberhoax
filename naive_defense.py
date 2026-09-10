@@ -144,8 +144,14 @@ if __name__ == "__main__":  # python naive_defense.py  [--trials N]
     print("\n" + str(verdict_summary(results)))
 
     out = Path("runs/naive.json")
+    n_err = sum(1 for r in results if r["verdict"] == "error")
+    if n_err and out.exists():
+        print(f"\n{n_err}/{len(results)} attacks errored (quota). Keeping existing "
+              f"{out} - re-run when the token cap has cleared.")
+        raise SystemExit(1)
     out.write_text(json.dumps({
         "defense": "naive_keyword_blocklist",
+        "synthesized": False,
         "trials": trials,
         "attacks": results,
     }, indent=2))
