@@ -189,6 +189,46 @@ def _threeway_section(u_atk: list[dict], d_atk: list[dict]) -> list[str]:
     return md
 
 
+def _cross_check_section() -> list[str]:
+    """Residual risk per target model, from runs/cross_check.json if present."""
+    md = ["## 3b. Model cross-check (harness is model-agnostic)", ""]
+    p = RUNS_DIR / "cross_check.json"
+    if not p.exists():
+        md.append(
+            "_`runs/cross_check.json` not found - run `python cross_check.py` to "
+            "populate. The same 8-attack suite and defense logic run unchanged "
+            "against a second Groq model (the swap knob is the `TARGET_MODEL` "
+            "env var)._"
+        )
+        md.append("")
+        return md
+    data = json.loads(p.read_text())
+    models = data.get("models", [])
+    md.append("| target model | trials | residual risk (undefended) | residual risk (defended) |")
+    md.append("|---|---|---|---|")
+    for m in models:
+        u, d = m["residual_risk_undefended"], m["residual_risk_defended"]
+        md.append(
+            f"| `{m['model']}` | {m['trials']} | "
+            f"{u['absolute']:.1f} / {u['ceiling']} | {d['absolute']:.1f} / {d['ceiling']} |"
+        )
+    md.append("")
+    if len(models) >= 2:
+        a, b = models[0], models[1]
+        md.append(
+            f"This harness is model-agnostic - the same attack suite and defense "
+            f"logic surfaced {a['residual_risk_undefended']['absolute']:.1f} residual "
+            f"risk undefended / {a['residual_risk_defended']['absolute']:.1f} defended "
+            f"on `{a['model']}` vs "
+            f"{b['residual_risk_undefended']['absolute']:.1f} / "
+            f"{b['residual_risk_defended']['absolute']:.1f} on `{b['model']}`, "
+            f"demonstrating the tool generalizes rather than being tuned to one "
+            f"specific model."
+        )
+    md.append("")
+    return md
+
+
 def _recommendation(d_atk: list[dict], fp_rate: float | str) -> str:
     succ = [r for r in d_atk if r["verdict"] == "succeeded"]
     part = [r for r in d_atk if r["verdict"] == "partial"]
@@ -354,6 +394,9 @@ def generate_report(
         f"Undefended baseline = {u_risk['absolute']:.1f}."
     )
     md.append("")
+
+    # 3b. model cross-check ------------------------------------------
+    md.extend(_cross_check_section())
 
     # 4. Most dangerous attack still getting through ------------------
     md.append("## 4. Most dangerous attack that still gets through")

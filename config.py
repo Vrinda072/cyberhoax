@@ -27,6 +27,14 @@ TARGET_MODEL = os.environ.get("TARGET_MODEL", "openai/gpt-oss-20b")
 JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "qwen/qwen3.8-27b")
 DEFENSE_MODEL = os.environ.get("DEFENSE_MODEL", "qwen/qwen3.8-27b")
 
+# Model-agnostic cross-check (cross_check.py). Set TARGET_MODEL to any of these
+# and the whole pipeline runs unchanged - the swap knob is just the env var.
+# (Groq decommissioned llama-3.3-70b-versatile; these are current tool-calling
+# models on the free tier.)
+CROSS_CHECK_MODELS = os.environ.get(
+    "CROSS_CHECK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"
+).split(",")
+
 # Deterministic runs so the audit is reproducible.
 TEMPERATURE = 0.0
 
