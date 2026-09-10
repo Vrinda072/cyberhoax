@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .env
 runs/_ckpt_*.json
+runs/finish_after_reset.log
+runs/.finish.lock.d/
