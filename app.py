@@ -145,14 +145,22 @@ def run_live(mode: str, trials: int, threshold: float) -> None:
     undef_results, defd_results = [], []
     try:
         if do_undef:
-            for a in ALL_ATTACKS:
-                r = run_attack(a, trials=trials, client=client)
+            for i, a in enumerate(ALL_ATTACKS, 1):
+                with st.spinner(
+                    f"Undefended {i}/{len(ALL_ATTACKS)} - {a.attack_id} "
+                    f"(agent + judge, {trials} trial(s))..."
+                ):
+                    r = run_attack(a, trials=trials, client=client)
                 undef_results.append(r)
                 _tick(f"undefended - {a.attack_id}", r, False)
         if do_defd:
             defense = DefendedAgent(threshold=threshold)
-            for a in ALL_ATTACKS:
-                r = run_attack(a, trials=trials, client=client, defense=defense)
+            for i, a in enumerate(ALL_ATTACKS, 1):
+                with st.spinner(
+                    f"Defended {i}/{len(ALL_ATTACKS)} - {a.attack_id} "
+                    f"(input screen + agent + output screen + judge)..."
+                ):
+                    r = run_attack(a, trials=trials, client=client, defense=defense)
                 defd_results.append(r)
                 _tick(f"defended - {a.attack_id}", r, True)
     except Exception as exc:  # noqa: BLE001 - surface any Groq/quota error, keep partials
@@ -176,7 +184,8 @@ def run_live(mode: str, trials: int, threshold: float) -> None:
                 st.warning(f"FP check skipped: {exc}")
         payload = {
             "target_model": TARGET_MODEL, "judge_model": JUDGE_MODEL,
-            "defense_model": DEFENSE_MODEL, "trials": trials,
+            "defense_model": DEFENSE_MODEL, "defense_flag_threshold": threshold,
+            "trials": trials,
             "attacks": defd_results,
             "category_comparison": category_comparison(undef_results or [], defd_results),
             "false_positive": fp,
@@ -191,7 +200,7 @@ def run_live(mode: str, trials: int, threshold: float) -> None:
 # Tab renderers
 # ---------------------------------------------------------------------------
 def render_overview(undef: dict | None, defd: dict | None) -> None:
-    from severity import residual_risk
+    from severity import attack_risk, rationale_of, residual_risk, severity_of
 
     if not undef and not defd:
         st.info("No results yet. Load a saved run or use **Run suite** in the sidebar.")
@@ -199,16 +208,39 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
 
     u_atk = undef["attacks"] if undef else []
     d_atk = defd["attacks"] if defd else []
-    u_risk = residual_risk(u_atk)["pct"] if u_atk else None
-    d_risk = residual_risk(d_atk)["pct"] if d_atk else None
 
+    ur = residual_risk(u_atk) if u_atk else None
+    dr = residual_risk(d_atk) if d_atk else None
     c1, c2, c3 = st.columns(3)
-    c1.metric("Residual risk - undefended", f"{u_risk:.0f} / 100" if u_risk is not None else "-")
-    c2.metric("Residual risk - defended", f"{d_risk:.0f} / 100" if d_risk is not None else "-")
-    if u_risk is not None and d_risk is not None:
-        c3.metric("Reduction", f"{u_risk - d_risk:.0f} pts",
-                  delta=f"-{(u_risk - d_risk) / u_risk * 100:.0f}%" if u_risk else None,
+    c1.metric("Residual risk - undefended",
+              f"{ur['absolute']:.1f} / {ur['ceiling']}" if ur else "-")
+    c2.metric("Residual risk - defended",
+              f"{dr['absolute']:.1f} / {dr['ceiling']}" if dr else "-")
+    if ur and dr:
+        c3.metric("Reduction", f"{ur['absolute'] - dr['absolute']:.1f} pts",
+                  delta=f"-{(ur['absolute'] - dr['absolute']) / ur['absolute'] * 100:.0f}%"
+                  if ur["absolute"] else None,
                   delta_color="inverse")
+
+    # --- most dangerous attack still getting through (prominent) ----------
+    if d_atk:
+        residual = [r for r in d_atk if r["verdict"] in ("succeeded", "partial")]
+        if residual:
+            worst = max(residual, key=lambda r: (attack_risk(r),
+                                                 {"partial": 1, "succeeded": 2}[r["verdict"]]))
+            aid = worst["attack_id"]
+            box = "error" if worst["verdict"] == "succeeded" else "warning"
+            getattr(st, box)(
+                f"**Most dangerous attack still getting through: "
+                f"`{aid}`**  \n"
+                f"category `{worst['category']}` · severity **{severity_of(aid)}** · "
+                f"verdict after defense **{worst['verdict']}** · "
+                f"risk contribution {attack_risk(worst):.1f}  \n"
+                f"{rationale_of(aid)}  \n"
+                f"_Judge:_ {worst['judge_reasoning']}"
+            )
+        else:
+            st.success("**No attack succeeds or partially succeeds after defense.**")
 
     st.markdown("#### Severity-weighted risk by category")
     cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
