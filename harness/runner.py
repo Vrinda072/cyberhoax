@@ -22,7 +22,7 @@ from typing import Any, Callable, Optional
 from groq import APIConnectionError, APIStatusError, RateLimitError
 from groq import Groq
 
-from attacks import Attack
+from attacks import ALL_ATTACKS, Attack
 from harness.judge import judge
 from severity import severity_of
 from target_agent import run_agent
@@ -173,3 +173,103 @@ def verdict_summary(results: list[dict[str, Any]]) -> dict[str, int]:
     for r in results:
         out[r["verdict"]] = out.get(r["verdict"], 0) + 1
     return out
+
+
+def run_before_after(
+    attacks: Optional[list[Attack]] = None,
+    *,
+    trials: int = 3,
+    threshold: Optional[float] = None,
+    client: Optional[Groq] = None,
+    pause: float = 1.0,
+    progress: bool = True,
+) -> list[dict[str, Any]]:
+    """Run every attack through the UNDEFENDED then the DEFENDED agent and return
+    one combined row per attack:
+
+        {attack_id, category, severity,
+         verdict_before, verdict_after,
+         judge_reasoning,                 # after-defense reasoning (spec key)
+         judge_reasoning_before, judge_reasoning_after,
+         verdict_counts_before, verdict_counts_after,
+         full_transcript_before, full_transcript_after}
+
+    `threshold` overrides config.DEFENSE_FLAG_THRESHOLD for the defended pass.
+    """
+    from harness.defense import DefendedAgent
+
+    attacks = attacks if attacks is not None else list(ALL_ATTACKS)
+    client = client or Groq(max_retries=5)
+    defense = DefendedAgent(**({"threshold": threshold} if threshold is not None else {}))
+
+    rows: list[dict[str, Any]] = []
+    for n, atk in enumerate(attacks, 1):
+        if progress:
+            print(f"  [{n}/{len(attacks)}] {atk.attack_id}", flush=True)
+        before = run_attack(atk, trials=trials, client=client, pause=pause)
+        after = run_attack(atk, trials=trials, client=client, defense=defense, pause=pause)
+        if progress:
+            print(
+                f"      before={before['verdict'].upper():9s} "
+                f"after={after['verdict'].upper()}",
+                flush=True,
+            )
+        rows.append(
+            {
+                "attack_id": atk.attack_id,
+                "category": atk.category,
+                "severity": before["severity"],
+                "verdict_before": before["verdict"],
+                "verdict_after": after["verdict"],
+                "judge_reasoning": after["judge_reasoning"],
+                "judge_reasoning_before": before["judge_reasoning"],
+                "judge_reasoning_after": after["judge_reasoning"],
+                "verdict_counts_before": before["verdict_counts"],
+                "verdict_counts_after": after["verdict_counts"],
+                "full_transcript_before": before["transcript"],
+                "full_transcript_after": after["transcript"],
+            }
+        )
+    return rows
+
+
+def before_after_table(rows: list[dict[str, Any]]) -> str:
+    head = (
+        f"{'ATTACK_ID':<34}{'CATEGORY':<13}{'SEV':<8}"
+        f"{'BEFORE':<11}{'AFTER':<11}"
+    )
+    lines = [head, "-" * len(head)]
+    for r in rows:
+        tag = ""
+        b, a = _VERDICT_RANK.get(r["verdict_before"], 0), _VERDICT_RANK.get(r["verdict_after"], 0)
+        if a < b:
+            tag = "  improved"
+        elif a > b:
+            tag = "  REGRESSED"
+        lines.append(
+            f"{r['attack_id']:<34}{r['category']:<13}{r['severity']:<8}"
+            f"{r['verdict_before']:<11}{r['verdict_after']:<11}{tag}"
+        )
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":  # python -m harness.runner  [--trials N]
+    import json
+    import sys
+    from pathlib import Path
+
+    n_trials = 3
+    if "--trials" in sys.argv:
+        n_trials = int(sys.argv[sys.argv.index("--trials") + 1])
+
+    print(f"run_before_after: {len(ALL_ATTACKS)} attacks x {n_trials} trials, "
+          "undefended then defended\n")
+    data = run_before_after(trials=n_trials)
+    print("\n" + before_after_table(data))
+    print("\nbefore:", verdict_summary([{"verdict": r["verdict_before"]} for r in data]))
+    print("after :", verdict_summary([{"verdict": r["verdict_after"]} for r in data]))
+
+    out = Path(__file__).resolve().parent.parent / "runs" / "before_after.json"
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(json.dumps(data, indent=2))
+    print(f"\nsaved -> {out}")
