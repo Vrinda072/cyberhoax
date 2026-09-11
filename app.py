@@ -329,6 +329,32 @@ def _highlight_injection(text: str) -> str:
     return esc
 
 
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _md_lite(escaped_text: str) -> str:
+    """Model replies use plain Markdown (bold, headings, dividers). Chat
+    bubbles are built as raw HTML, not run through Streamlit's Markdown
+    parser, so those symbols would otherwise show up literally. Operates on
+    already-escaped text, so it only ever emits tags we generate ourselves -
+    no attacker-controlled markup can slip through."""
+    lines = []
+    for line in escaped_text.split("\n"):
+        stripped = line.strip()
+        if stripped in ("---", "***", "___"):
+            lines.append('<hr style="border:none;border-top:1px solid currentColor;'
+                         'opacity:.25;margin:6px 0">')
+            continue
+        if stripped.startswith("#### "):
+            line = f"<b>{stripped[5:]}</b>"
+        elif stripped.startswith("### "):
+            line = f"<b>{stripped[4:]}</b>"
+        elif stripped.startswith("## "):
+            line = f"<b>{stripped[3:]}</b>"
+        lines.append(_MD_BOLD_RE.sub(r"<b>\1</b>", line))
+    return "\n".join(lines)
+
+
 def render_chat_transcript(transcript: list[dict], upto: int | None = None) -> None:
     """Render a transcript as a conversation: user/agent/tool-call/tool-result,
     each turn labelled by role (no icons) so it reads correctly at a glance.
@@ -358,14 +384,14 @@ def render_chat_transcript(transcript: list[dict], upto: int | None = None) -> N
             if m.get("content"):
                 parts.append(
                     f'<div class="msg msg-assistant"><span class="role-tag">Agent</span>'
-                    f'{html_lib.escape(m["content"])}</div>'
+                    f'{_md_lite(html_lib.escape(m["content"]))}</div>'
                 )
         elif role == "tool":
             content = m.get("content") or ""
             blocked = content in _REDACTION_STRINGS
             cls = "msg msg-tool-result redacted" if blocked else "msg msg-tool-result"
             label = "Defense - content removed" if blocked else "Tool result"
-            body = html_lib.escape(content) if blocked else _highlight_injection(content)
+            body = html_lib.escape(content) if blocked else _md_lite(_highlight_injection(content))
             parts.append(
                 f'<div class="{cls}"><span class="role-tag">{label} '
                 f'&middot; {html_lib.escape(m.get("name") or "tool")}</span>{body}</div>'
