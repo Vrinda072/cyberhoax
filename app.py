@@ -631,79 +631,30 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
         else:
             st.success("**No attack succeeds or partially succeeds after defense.**")
 
-    st.markdown(
-        "<div class='section-head'><h4>Risk by attack category</h4></div>"
-        "<div class='explain'>Same residual-risk scale, split by attack type, "
-        "so it's obvious which categories the defense actually closes.</div>",
-        unsafe_allow_html=True,
-    )
-    cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
-    rows = []
-    for c in cats:
-        row = {"category": c}
-        if u_atk:
-            row["Undefended"] = residual_risk([r for r in u_atk if r["category"] == c])["pct"]
-        if d_atk:
-            row["Defended"] = residual_risk([r for r in d_atk if r["category"] == c])["pct"]
-        rows.append(row)
-    df = pd.DataFrame(rows).set_index("category")
-    st.bar_chart(df, height=320, stack=False,
-                 color=["#8f1d1d", "#0a6847"][: len(df.columns)])
-    st.caption("0 = fully blocked, 100 = every attack in the category fully succeeds.")
+    with st.expander("Break risk down by attack category"):
+        cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
+        rows = []
+        for c in cats:
+            row = {"category": c}
+            if u_atk:
+                row["Undefended"] = residual_risk([r for r in u_atk if r["category"] == c])["pct"]
+            if d_atk:
+                row["Defended"] = residual_risk([r for r in d_atk if r["category"] == c])["pct"]
+            rows.append(row)
+        df = pd.DataFrame(rows).set_index("category")
+        st.bar_chart(df, height=300, stack=False,
+                     color=["#8f1d1d", "#0a6847"][: len(df.columns)])
+        st.caption("0 = fully blocked, 100 = every attack in the category fully succeeds.")
 
-
-def render_attacks(undef: dict | None, defd: dict | None) -> None:
-    from severity import rationale_of
-    from target_agent import format_transcript
-    from harness.defense import defense_actions
-
-    if not undef and not defd:
-        st.info("No results yet.")
-        return
-
-    u_by = {r["attack_id"]: r for r in (undef["attacks"] if undef else [])}
-    d_by = {r["attack_id"]: r for r in (defd["attacks"] if defd else [])}
-    all_ids = list(dict.fromkeys(list(u_by) + list(d_by)))
-
-    cats = sorted({(u_by.get(i) or d_by.get(i))["category"] for i in all_ids})
-    pick = st.multiselect("Filter by category", cats, default=cats)
-
-    for aid in all_ids:
-        base = u_by.get(aid) or d_by.get(aid)
-        if base["category"] not in pick:
-            continue
-        u = u_by.get(aid)
-        d = d_by.get(aid)
-        with st.container(border=True):
-            verdicts = ""
-            if u:
-                verdicts += f"before {badge(u['verdict'], u['verdict'])} "
-            if d:
-                verdicts += f"&rarr; after {badge(d['verdict'], d['verdict'])}"
-            st.markdown(
-                f"<span class='mono' style='font-weight:600'>{aid}</span> &nbsp; "
-                f"{badge(base['category'], 'unrated')} "
-                f"{badge(base['severity'], base['severity'])} &nbsp; {verdicts}",
-                unsafe_allow_html=True,
-            )
-            st.caption(rationale_of(aid))
-            if d:
-                act = defense_actions(d["transcript"])
-                st.markdown(
-                    f"Defense &mdash; tool results redacted: "
-                    f"**{act['tool_results_redacted']}**, final reply withheld: "
-                    f"**{act['final_output_withheld']}**"
-                )
-            shown = d or u
-            with st.expander("Judge reasoning"):
-                if u:
-                    st.markdown(f"**Undefended:** {u['judge_reasoning']}")
-                if d:
-                    st.markdown(f"**Defended:** {d['judge_reasoning']}")
-            with st.expander("Conversation (worst trial)"):
-                render_chat_transcript(shown["transcript"])
-                with st.expander("raw text"):
-                    st.code(format_transcript(shown["transcript"]), language="text")
+    if defd and defd.get("false_positive"):
+        st.markdown(
+            "<div class='section-head'><h4>Cost check: does the defense break normal use</h4></div>"
+            "<div class='explain'>A defense that blocks every attack by also blocking "
+            "everyone else isn't a defense worth shipping. This is the same benign "
+            "traffic run through the defended agent.</div>",
+            unsafe_allow_html=True,
+        )
+        render_benign(defd)
 
 
 def render_benign(defd: dict | None) -> None:
@@ -971,20 +922,15 @@ def main() -> None:
         src.append(f"defended ({'session' if 'defd' in st.session_state else 'saved'})")
     st.caption("Data: " + (" &nbsp;|&nbsp; ".join(src) if src else "none loaded"))
 
-    t_over, t_theater, t_atk, t_cmp, t_benign, t_report = st.tabs(
-        ["Overview", "Attack Theater", "Attacks", "Compare defenses",
-         "Benign / FP", "Report"]
+    t_over, t_theater, t_cmp, t_report = st.tabs(
+        ["Overview", "Attack Theater", "Compare defenses", "Report"]
     )
     with t_over:
         render_overview(undef, defd)
     with t_theater:
         render_theater(undef, defd)
-    with t_atk:
-        render_attacks(undef, defd)
     with t_cmp:
         render_comparison(undef, defd)
-    with t_benign:
-        render_benign(defd)
     with t_report:
         render_report()
 
