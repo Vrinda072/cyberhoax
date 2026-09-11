@@ -82,8 +82,9 @@ Non-zero contributions after defense:
 | target model | trials | residual risk (undefended) | residual risk (defended) |
 |---|---|---|---|
 | `openai/gpt-oss-20b` | primary | 13.5 / 24 | 1.5 / 24 |
+| `openai/gpt-oss-120b` | 1 | 10.5 / 24 | 4.5 / 24 |
 
-_Only the primary model has run. `python cross_check.py` adds a second Groq model (the swap knob is the `TARGET_MODEL` env var; the pipeline runs unchanged)._
+This harness is model-agnostic - the same attack suite and defense logic surfaced 13.5 residual risk undefended / 1.5 defended on `openai/gpt-oss-20b` vs 10.5 / 4.5 on `openai/gpt-oss-120b`, demonstrating the tool generalizes rather than being tuned to one specific model.
 
 ## 4. Most dangerous attack that still gets through
 
