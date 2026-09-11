@@ -110,7 +110,35 @@ st.markdown(
                       color: var(--muted); font-weight: 700; }
       .cert .row { font-size: .88rem; color: var(--ink-soft); margin-top: .4rem; }
       .cert .why { font-size: .92rem; color: var(--ink); margin-top: .55rem; }
+      .cert .stamp { position: relative; display: inline-block; }
+      .cert .stamp::after {
+        content: ""; position: absolute; inset: -6px -14px; border-radius: 8px;
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 35%, transparent);
+        animation: cert-glow 2.2s ease-out 1;
+      }
+      @keyframes cert-glow {
+        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 40%, transparent); }
+        100% { box-shadow: 0 0 0 22px color-mix(in srgb, var(--c) 0%, transparent); }
+      }
       @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+      /* --- section headers: an accent underline that draws in --- */
+      .section-head h4 { position: relative; padding-bottom: .3rem; }
+      .section-head h4::after {
+        content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 30px;
+        background: #3b82f6; animation: underline-in .6s cubic-bezier(.2,.9,.25,1) both;
+      }
+      @keyframes underline-in { from { width: 0; opacity: 0; } to { width: 30px; opacity: 1; } }
+
+      /* --- live status pulse: reinforces this is a running system, not a mock --- */
+      .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+                  background: #22c55e; margin-right: 6px; position: relative; top: -1px;
+                  box-shadow: 0 0 0 0 rgba(34,197,94,.6); animation: live-pulse 1.8s infinite; }
+      @keyframes live-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.55); }
+        70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+        100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+      }
 
       /* --- pipeline diagram --- */
       .pipeline-wrap { overflow-x: auto; padding: .3rem 0 .6rem; }
@@ -125,7 +153,10 @@ st.markdown(
                   gap: .6rem; margin-bottom: 1rem; }
       .cap-card { border: 1px solid var(--line); border-left: 4px solid var(--c, #64748b);
                   border-radius: 8px; padding: .65rem .8rem; background: var(--paper);
-                  animation: rise .45s cubic-bezier(.2,.9,.25,1) both; }
+                  animation: rise .45s cubic-bezier(.2,.9,.25,1) both;
+                  transition: transform .18s ease, box-shadow .18s ease; }
+      .cap-card:hover { transform: translateY(-3px);
+                        box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--c, #64748b) 35%, transparent); }
       .cap-card .cap-title { font-size: .72rem; font-weight: 800; letter-spacing: .06em;
                              text-transform: uppercase; color: var(--ink); }
       .cap-card .cap-stat { font-size: 1.15rem; font-weight: 800; color: var(--c, var(--ink)); margin: .15rem 0; }
@@ -158,12 +189,23 @@ st.markdown(
                                   padding: 0 2px; border-radius: 2px; animation: inj-flash 1.2s ease-in-out 1; }
       @keyframes inj-flash { 0% { background: #ef9a9a; } 100% { background: #f6c8c8; } }
 
-      .theater-stamp { text-align: center; padding: 1.5rem; margin-top: .6rem; border-radius: 10px;
-                       border: 2px solid var(--c); border-top-width: 6px; background: var(--paper);
-                       animation: stamp-in .4s cubic-bezier(.34,1.4,.4,1) both; }
+      .theater-stamp { position: relative; text-align: center; padding: 1.5rem; margin-top: .6rem;
+                       border-radius: 10px; border: 2px solid var(--c); border-top-width: 6px;
+                       background: var(--paper); animation: stamp-in .4s cubic-bezier(.34,1.4,.4,1) both; }
+      .theater-stamp::before {
+        content: ""; position: absolute; inset: 0; border-radius: 10px; pointer-events: none;
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 45%, transparent);
+        animation: cert-glow .9s ease-out .3s 1 both;
+      }
       @keyframes stamp-in { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
       .theater-stamp .big { font-size: 1.9rem; font-weight: 900; letter-spacing: .08em;
-                            color: var(--c); text-transform: uppercase; }
+                            color: var(--c); text-transform: uppercase;
+                            animation: stamp-shake .5s ease-out .35s both; }
+      @keyframes stamp-shake {
+        0%, 100% { transform: translateX(0); }
+        20% { transform: translateX(-3px); } 40% { transform: translateX(3px); }
+        60% { transform: translateX(-2px); } 80% { transform: translateX(2px); }
+      }
       .theater-stamp .sub { font-size: .9rem; color: var(--ink-soft); margin-top: .4rem; max-width: 60ch;
                             margin-left: auto; margin-right: auto; }
 
@@ -917,10 +959,15 @@ def main() -> None:
     src = []
     if undef:
         src.append(f"undefended ({'session' if 'undef' in st.session_state else 'saved'}, "
-                   f"target `{undef.get('target_model', '?')}`)")
+                   f"target <code>{undef.get('target_model', '?')}</code>)")
     if defd:
         src.append(f"defended ({'session' if 'defd' in st.session_state else 'saved'})")
-    st.caption("Data: " + (" &nbsp;|&nbsp; ".join(src) if src else "none loaded"))
+    live_dot = "<span class='live-dot'></span>" if (undef or defd) else ""
+    st.markdown(
+        f"<div style='font-size:.85rem;color:var(--muted);margin:-.3rem 0 .8rem'>"
+        f"{live_dot}Data: " + (" &nbsp;|&nbsp; ".join(src) if src else "none loaded") + "</div>",
+        unsafe_allow_html=True,
+    )
 
     t_over, t_theater, t_cmp, t_report = st.tabs(
         ["Overview", "Attack Theater", "Compare defenses", "Report"]
