@@ -49,9 +49,9 @@ st.markdown(
         --ink: #0f172a; --ink-soft: #334155; --muted: #64748b;
         --line: #dbe1e8; --paper: #ffffff; --wash: #f6f8fa;
         --navy: #0b1220; --navy-2: #16233a;
-        --safe: #0a6847; --safe-bg: #e9f6f0;
-        --warn: #92400e; --warn-bg: #fdf2e3;
-        --risk: #8f1d1d; --risk-bg: #fbeaea;
+        --safe: #08eb00; --safe-bg: #e9f6f0;
+        --warn: #eab540; --warn-bg: #fdf2e3;
+        --risk: #ef5353; --risk-bg: #fbeaea;
         --neutral: #475569; --neutral-bg: #eef1f5;
       }
       .stApp { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -245,12 +245,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.markdown("<style>" + (Path(__file__).parent / "ui" / "sentinel.css").read_text() + "</style>", unsafe_allow_html=True)
+
 # ---------------------------------------------------------------------------
 # Colours / badges
 # ---------------------------------------------------------------------------
 _COLOR = {
-    "low": "#1d4ed8", "medium": "#92400e", "high": "#8f1d1d", "unrated": "#475569",
-    "blocked": "#0a6847", "partial": "#92400e", "succeeded": "#8f1d1d", "error": "#475569",
+    "low": "#a3a3a3", "medium": "#eab540", "high": "#ef5353", "unrated": "#475569",
+    "blocked": "#08eb00", "partial": "#eab540", "succeeded": "#ef5353", "error": "#475569",
 }
 
 # Hover-only glossary. Keyed by the lowercase text a badge/term shows, so one
@@ -368,7 +370,29 @@ def render_chat_transcript(transcript: list[dict], upto: int | None = None) -> N
                 f'&middot; {html_lib.escape(m.get("name") or "tool")}</span>{body}</div>'
             )
     parts.append("</div>")
-    st.markdown("".join(parts), unsafe_allow_html=True)
+    # Keep captured text inside its HTML message: raw newlines can make
+    # Markdown reinterpret payload headings and lists as page formatting.
+    st.markdown("".join(parts).replace("\n", "<br>"), unsafe_allow_html=True)
+
+
+def interactive_bars(df, colors, label, height):
+    import altair as alt
+
+    data = df.reset_index().melt("category", var_name="Defense", value_name="Percent")
+    selection = alt.selection_point(fields=["Defense"], bind="legend")
+    hover = alt.selection_point(on="pointerover", clear="pointerout", fields=["category", "Defense"])
+    chart = alt.Chart(data).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+        x=alt.X("category:N", title="Attack category", axis=alt.Axis(labelAngle=0)),
+        xOffset="Defense:N",
+        y=alt.Y("Percent:Q", title=label, scale=alt.Scale(domain=[0, 100])),
+        color=alt.Color("Defense:N", scale=alt.Scale(domain=list(df.columns), range=colors)),
+        opacity=alt.condition(selection, alt.value(1), alt.value(.18)),
+        stroke=alt.condition(hover, alt.value("#f5f5f5"), alt.value("transparent")),
+        strokeWidth=alt.value(2),
+        tooltip=[alt.Tooltip("category:N", title="Attack category"), "Defense:N", alt.Tooltip("Percent:Q", title=label, format=".1f")],
+    ).add_params(selection, hover).properties(height=height).configure(font="Sora").configure_axis(labelFont="Sora", titleFont="Sora").configure_legend(labelFont="Sora", titleFont="Sora")
+    st.altair_chart(chart, width="stretch")
+    st.caption("Hover over a bar for its value. Click a legend item to focus a defense; double-click to reset.")
 
 
 def svg_gauge(value: float, ceiling: float, label: str, color: str, size: int = 148) -> str:
@@ -379,14 +403,15 @@ def svg_gauge(value: float, ceiling: float, label: str, color: str, size: int = 
     circ = 2 * 3.14159265 * r
     offset = circ * (1 - pct)
     return (
-        f'<svg width="{size}" height="{size}" viewBox="0 0 120 120">'
-        f'<circle cx="60" cy="60" r="{r}" fill="none" stroke="#e2e8f0" stroke-width="14"/>'
+        f'<svg class="interactive-gauge" tabindex="0" role="img" aria-label="{label}: {value:.1f} out of {ceiling:g}" width="{size}" height="{size}" viewBox="0 0 120 120">'
+        f'<title>{label}: {value:.1f} / {ceiling:g} residual risk ({pct:.0%}). Lower is better.</title>'
+        f'<circle cx="60" cy="60" r="{r}" fill="none" stroke="#333333" stroke-width="14"/>'
         f'<circle class="gauge-ring" cx="60" cy="60" r="{r}" fill="none" stroke="{color}" '
         f'stroke-width="14" stroke-dasharray="{circ:.1f}" stroke-dashoffset="{offset:.1f}" '
         f'style="--circ:{circ:.1f}px; --offset:{offset:.1f}px" '
         f'stroke-linecap="round" transform="rotate(-90 60 60)"/>'
         f'<text x="60" y="57" text-anchor="middle" font-size="24" font-weight="800" '
-        f'fill="#0f172a" font-family="sans-serif">{value:.1f}</text>'
+        f'fill="#eeeeee" font-family="sans-serif">{value:.1f}</text>'
         f'<text x="60" y="75" text-anchor="middle" font-size="11" fill="#64748b" '
         f'font-family="sans-serif">/ {ceiling:g}</text>'
         f'</svg><div class="gauge-label">{label}</div>'
@@ -515,11 +540,11 @@ def _pipeline_diagram_svg() -> str:
     flowing dashed animation so the diagram reads as a live pipeline, not a
     static org chart."""
     boxes = [
-        ("ATTACK PAYLOAD", "8 payloads / 4 categories", "#8f1d1d"),
-        ("TARGET AGENT", "tool-calling model under test", "#334155"),
-        ("DEFENSE LAYER", "input screen + output screen", "#0a6847"),
-        ("LLM JUDGE", "independent scoring model", "#334155"),
-        ("VERDICT", "blocked / partial / succeeded", "#0f172a"),
+        ("ATTACK PAYLOAD", "8 payloads / 4 categories", "#ef5353"),
+        ("TARGET AGENT", "tool-calling model under test", "#aaaaaa"),
+        ("DEFENSE LAYER", "input screen + output screen", "#08eb00"),
+        ("LLM JUDGE", "independent scoring model", "#aaaaaa"),
+        ("VERDICT", "blocked / partial / succeeded", "#dddddd"),
     ]
     bw, bh, gap, y = 162, 76, 34, 26
     total_w = len(boxes) * bw + (len(boxes) - 1) * gap + 16
@@ -532,12 +557,13 @@ def _pipeline_diagram_svg() -> str:
     x, centers = 8, []
     for title, sub, color in boxes:
         parts.append(
-            f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" rx="8" fill="white" '
+            f'<g class="pipeline-node" tabindex="0"><title>{title}: {sub}</title>'
+            f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" rx="8" fill="#111" '
             f'stroke="{color}" stroke-width="2"/>'
             f'<text x="{x + bw / 2}" y="{y + 32}" text-anchor="middle" '
             f'class="pipeline-box-label" fill="{color}">{title}</text>'
             f'<text x="{x + bw / 2}" y="{y + 50}" text-anchor="middle" '
-            f'class="pipeline-box-sub" fill="#64748b">{sub}</text>'
+            f'class="pipeline-box-sub" fill="#64748b">{sub}</text></g>'
         )
         centers.append((x, x + bw, y + bh / 2))
         x += bw + gap
@@ -574,7 +600,7 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
     if undef:
         cats = sorted({r["category"] for r in undef["attacks"]})
         cards.append(("Attack Suite", f"{len(undef['attacks'])} payloads",
-                      f"{len(cats)} categories: {', '.join(cats)}.", "#8f1d1d"))
+                      f"{len(cats)} categories: {', '.join(cats)}.", "#ef5353"))
     cards.append(("LLM Judge", "independent scorer",
                   "A different model from the target and defense - not grading its own work.",
                   "#334155"))
@@ -582,7 +608,7 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
         blocked = sum(1 for r in defd["attacks"] if r["verdict"] == "blocked")
         cards.append(("Defense Layer", f"{blocked}/{len(defd['attacks'])} blocked",
                       "Input screen on tool results + output screen on the final reply.",
-                      "#0a6847"))
+                      "#08eb00"))
     if naive and defd:
         d_by = {r["attack_id"]: r for r in defd["attacks"]}
         worse = sum(
@@ -591,12 +617,12 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
         )
         cards.append(("Naive Baseline", f"loses on {worse} attacks",
                       "A static keyword filter, compared against the semantic classifier.",
-                      "#92400e"))
+                      "#eab540"))
     if (RUNS / "defended.json").exists():
         from certificate import build_certificate
         try:
             c = build_certificate(RUNS / "defended.json")
-            ccolor = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
+            ccolor = {"PASS": "#08eb00", "CONDITIONAL PASS": "#eab540", "FAIL": "#ef5353"}.get(
                 c["status"], "#475569"
             )
             cards.append(("Security Certificate", c["status"],
@@ -619,7 +645,7 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
     )
     st.markdown(
         "<div class='cap-grid'>" + "".join(
-            f"<div class='cap-card' style='--c:{color}; animation-delay:{i * 0.06:.2f}s'>"
+            f"<div class='cap-card' tabindex='0' style='--c:{color}; animation-delay:{i * 0.06:.2f}s'>"
             f"<div class='cap-title'>{term(title, tip)}</div>"
             f"<div class='cap-stat'>{stat}</div></div>"
             for i, (title, stat, tip, color) in enumerate(cards)
@@ -642,7 +668,7 @@ def render_certificate() -> None:
         cert = build_certificate(p)
     except Exception:  # noqa: BLE001
         return
-    color = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
+    color = {"PASS": "#08eb00", "CONDITIONAL PASS": "#eab540", "FAIL": "#ef5353"}.get(
         cert["status"], "#475569"
     )
     t = cert["thresholds"]
@@ -693,11 +719,11 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
     g1, g2, g3 = st.columns([1, 1, 1.4])
     with g1:
         if ur:
-            st.markdown(svg_gauge(ur["absolute"], ur["ceiling"], "Undefended", "#8f1d1d"),
+            st.markdown(svg_gauge(ur["absolute"], ur["ceiling"], "Undefended", "#ef5353"),
                        unsafe_allow_html=True)
     with g2:
         if dr:
-            st.markdown(svg_gauge(dr["absolute"], dr["ceiling"], "Defended", "#0a6847"),
+            st.markdown(svg_gauge(dr["absolute"], dr["ceiling"], "Defended", "#08eb00"),
                        unsafe_allow_html=True)
     with g3:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -736,8 +762,7 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
                 row["Defended"] = residual_risk([r for r in d_atk if r["category"] == c])["pct"]
             rows.append(row)
         df = pd.DataFrame(rows).set_index("category")
-        st.bar_chart(df, height=300, stack=False,
-                     color=["#8f1d1d", "#0a6847"][: len(df.columns)])
+        interactive_bars(df, ["#ef5353", "#08eb00"][:len(df.columns)], "Residual risk (%)", 300)
 
     if defd and defd.get("false_positive"):
         st.markdown(
@@ -769,9 +794,10 @@ def render_benign(defd: dict | None) -> None:
         }
         for r in fp.get("rows", [])
     ]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
+@st.fragment(run_every=1.0)
 def render_theater(undef: dict | None, defd: dict | None) -> None:
     """Step through one attack turn-by-turn - watch it unfold like a real chat,
     then land on a stamped verdict. Pure replay of captured transcripts: $0,
@@ -796,24 +822,31 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
     default_idx = next((i for i, a in enumerate(all_ids) if a.startswith("indirect")), 0)
 
     aid = st.selectbox("Pick an attack to watch", all_ids, index=default_idx)
+    if st.session_state.get("replay_attack") != aid:
+        st.session_state["replay_running"] = False
+        st.session_state["replay_attack"] = aid
 
     mode_key = "theater_mode"
     if mode_key not in st.session_state or st.session_state[mode_key] not in sources:
         st.session_state[mode_key] = list(sources.keys())[-1]
     mode_cols = st.columns(len(sources))
+    mode_help = {
+        "Undefended": "Replay the attack against the agent without a defense layer, to see its baseline vulnerability.",
+        "Naive Filter": "Replay with a keyword filter that blocks known attack phrases. This shows what simple rule-based protection catches or misses.",
+        "Classifier Defense": "Replay with an AI classifier that screens content for injected instructions and sensitive-data disclosure.",
+    }
     for i, name in enumerate(sources.keys()):
         with mode_cols[i]:
             selected = st.session_state[mode_key] == name
-            st.markdown(
-                f"<div style='text-align:center;font-size:.82rem;margin-bottom:.25rem;"
-                f"font-weight:{'700' if selected else '500'}'>"
-                f"{term(name, GLOSSARY.get(name.lower(), ''))}</div>",
-                unsafe_allow_html=True,
-            )
             if st.button(name, key=f"mode_btn_{name}",
                         type="primary" if selected else "secondary",
-                        use_container_width=True):
+                        help=mode_help[name],
+                        width="stretch"):
                 st.session_state[mode_key] = name
+                st.session_state[f"theater__{aid}__{name}"] = 0
+                st.session_state["replay_running"] = True
+                st.session_state["replay_tick"] = 0.0
+                st.rerun()
     mode = st.session_state[mode_key]
 
     row = sources[mode].get(aid)
@@ -832,25 +865,62 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
     n = len(transcript)
     key = f"theater__{aid}__{mode}"
     step = st.session_state.get(key, 0)
+    previous_step = step
+    running = st.session_state.get("replay_running", False)
+    if st.button("Pause replay" if running else "Play replay", key="replay_toggle"):
+        running = not running
+        if running and step >= n:
+            step = 0
+        st.session_state["replay_tick"] = time.monotonic()
+    auto_scroll = st.toggle("Follow new steps", value=True, key="replay_follow")
+    if running and time.monotonic() - st.session_state.get("replay_tick", 0.0) >= 3.0:
+        step = min(n, step + 1)
+        st.session_state["replay_tick"] = time.monotonic()
 
     b1, b2, b3, b4 = st.columns(4)
-    if b1.button("Reset", use_container_width=True, key=f"{key}_r"):
+    if b1.button("Reset", width="stretch", key=f"{key}_r"):
         step = 0
-    if b2.button("Back", use_container_width=True, disabled=step <= 0, key=f"{key}_b"):
+        running = False
+    if b2.button("Back", width="stretch", disabled=step <= 0, key=f"{key}_b"):
         step = max(0, step - 1)
-    if b3.button("Next", use_container_width=True, disabled=step >= n, key=f"{key}_n",
+        running = False
+    if b3.button("Next", width="stretch", disabled=step >= n, key=f"{key}_n",
                 type="primary"):
         step = min(n, step + 1)
-    if b4.button("Reveal all", use_container_width=True, key=f"{key}_a"):
+        running = False
+    if b4.button("Reveal all", width="stretch", key=f"{key}_a"):
         step = n
+        running = False
+    if step >= n:
+        running = False
+    st.session_state["replay_running"] = running
     st.session_state[key] = step
 
     st.progress(step / n if n else 0.0, f"turn {step} of {n}")
+    if aid == "indirect_01_system_override":
+        revealed = transcript[:step]
+        current = revealed[-1] if revealed else {}
+        role = current.get("role", "")
+        complete = bool(n) and step >= n
+        stage = 3 if complete else 2 if role == "tool" else 1 if role == "assistant" else 0
+        labels = ["Request", "AI agent", "Retrieved data", "Verdict"]
+        stages = "".join(
+            f'<div class="attack-stage {"is-current" if i == stage else ""}"><span>{i + 1:02d}</span>{label}</div>'
+            for i, label in enumerate(labels)
+        )
+        status = row["verdict"].upper() if complete else "Ready to replay" if not step else f"Recorded turn {step} · {role}"
+        st.markdown(
+            f'<div class="override-motion"><div class="attack-stages">{stages}</div>'
+            f'<div class="attack-motion-track {"is-moving" if step and not complete else ""}"><span></span></div>'
+            f'<div class="attack-motion-caption">{status} · Saved replay</div></div>',
+            unsafe_allow_html=True,
+        )
+
     render_chat_transcript(transcript, upto=step)
 
     if n and step >= n:
         verdict = row["verdict"]
-        color = {"blocked": "#0a6847", "partial": "#92400e", "succeeded": "#8f1d1d"}.get(
+        color = {"blocked": "#08eb00", "partial": "#eab540", "succeeded": "#ef5353"}.get(
             verdict, "#475569"
         )
         stamp = {
@@ -863,6 +933,19 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
             f"</div>",
             unsafe_allow_html=True,
         )
+
+    if auto_scroll and step > 0 and step != previous_step:
+        import streamlit.components.v1 as components
+        # Only scroll on a newly revealed turn, never on idle timer refreshes.
+        components.html(f"<!-- replay turn {step} -->" + """<script>
+        const doc = window.parent.document;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const targets = doc.querySelectorAll('.chat-wrap .msg, .theater-stamp');
+          const target = targets[targets.length - 1];
+          if (target) target.scrollIntoView({block:'start', behavior:
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+        }));
+        </script>""", height=0)
 
 
 def render_comparison(undef: dict | None, defd: dict | None) -> None:
@@ -902,8 +985,7 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
         rows.append(row)
     df = pd.DataFrame(rows).set_index("category")
     df.columns = ["No Defense", "Naive Filter", "Classifier"]
-    st.bar_chart(df, height=320, stack=False,
-                 color=["#94a3b8", "#92400e", "#0a6847"])
+    interactive_bars(df, ["#94a3b8", "#eab540", "#08eb00"], "Blocked (%)", 320)
     st.caption("% of attacks in each category fully blocked.")
 
     worse = [
@@ -958,7 +1040,7 @@ def render_report() -> None:
         status, fp_rate = cert["status"], f"{cert['false_positive_rate']:.0f}"
     except Exception:  # noqa: BLE001
         status, fp_rate = "?", "?"
-    color = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
+    color = {"PASS": "#08eb00", "CONDITIONAL PASS": "#eab540", "FAIL": "#ef5353"}.get(
         status, "#475569"
     )
 
@@ -992,6 +1074,7 @@ def sidebar() -> dict:
     )
 
     with st.sidebar:
+        st.markdown('<div class="sentinel-brand"><strong>CYBERHOAX</strong><span>HARNESS V1</span></div>', unsafe_allow_html=True)
         st.header("Configuration")
         st.text_input("Target model", TARGET_MODEL, disabled=True)
         st.text_input("Judge model", JUDGE_MODEL, disabled=True)
@@ -1008,9 +1091,8 @@ def sidebar() -> dict:
         st.header("Run")
         mode = st.radio("Mode", ["Both (before / after)", "Undefended only",
                                  "Defended only"])
-        go = st.button("Run suite", type="primary", use_container_width=True,
+        go = st.button("Run suite", type="primary", width="stretch",
                        help="Runs live against Groq.")
-        st.caption("$0 - Groq free tier.")
 
     return {"trials": trials, "threshold": threshold, "mode": mode, "go": go}
 
@@ -1022,7 +1104,7 @@ def main() -> None:
     st.markdown(
         "<div class='masthead'>"
         "<div class='kicker'>Pre-deployment security audit</div>"
-        "<h1>LLM &amp; AI Agent Security Testing Harness</h1>"
+        "<h1>LLM &amp; AI Agent Security <span class='sentinel-accent'>Testing Harness</span></h1>"
         "<p>Attack an agent, score blocked / partial / succeeded, "
         "measure residual risk before and after defense.</p></div>",
         unsafe_allow_html=True,
@@ -1058,7 +1140,7 @@ def main() -> None:
     back_col, *tab_cols = st.columns([0.8] + [1.6] * len(TAB_NAMES))
     with back_col:
         if st.button("← Back", disabled=not st.session_state[hist_key],
-                     use_container_width=True, key="nav_back",
+                     width="stretch", key="nav_back",
                      help="Return to the tab you were on before."):
             st.session_state[nav_key] = st.session_state[hist_key].pop()
             changed = True
@@ -1066,7 +1148,7 @@ def main() -> None:
         with col:
             active = st.session_state[nav_key] == name
             if st.button(name, type="primary" if active else "secondary",
-                         use_container_width=True, key=f"nav_{name}"):
+                         width="stretch", key=f"nav_{name}"):
                 if not active:
                     st.session_state[hist_key].append(st.session_state[nav_key])
                     st.session_state[nav_key] = name
