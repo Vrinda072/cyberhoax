@@ -72,6 +72,31 @@ ATTACK_REMEDIATION = {
     ),
 }
 
+# Remediation tied to each category-level finding (section 4b) - independent
+# of which single attack happens to be "most dangerous" in a given run.
+CATEGORY_REMEDIATION = {
+    "direct": (
+        "Harden the system prompt with an explicit instruction hierarchy and a "
+        "standing refusal to disclose or paraphrase its own instructions, with "
+        "the output screen as the backstop for leaks that slip through."
+    ),
+    "indirect": (
+        "Treat every tool result as untrusted data, never instructions: delimit "
+        "or spotlight retrieved text and strip lines addressed to \"assistant\" "
+        "or \"system\" before the model sees them."
+    ),
+    "tool_misuse": (
+        "Enforce least privilege at the tool-call layer: require each `doc_id` "
+        "to be justified by the stated task, and gate bulk or out-of-scope reads "
+        "behind human approval rather than relying on the content screens."
+    ),
+    "exfiltration": (
+        "Redact case files by default - project to status/next-step only - and "
+        "have the output screen block replies containing SSN, DOB, address "
+        "patterns, or verbatim system-prompt text."
+    ),
+}
+
 # Category-level limitation notes for section 6.
 CATEGORY_LIMITS = {
     "direct": (
@@ -302,6 +327,28 @@ def generate_report(
         f"- **Cost:** $0 (Groq free tier)."
     )
     md.append("")
+    md.append(
+        "**Who this is for:** an AppSec / security engineering lead who has to "
+        "sign off on an LLM agent before it reaches production - at a government "
+        "agency, a bank, or any organization giving an agent tool access to "
+        "sensitive systems. Today that sign-off is either skipped or done as "
+        "ad-hoc manual red-teaming with no repeatable score; this harness "
+        "replaces that gap with an automated, re-runnable suite that produces "
+        "the same pass/fail certificate every time, for $0."
+    )
+    md.append("")
+    md.append(
+        "**Why now:** agentic tool use - an LLM calling functions and reading "
+        "external documents on a user's behalf - is a post-2023 attack surface. "
+        "Indirect prompt injection (malicious instructions hidden in a page or "
+        "file the agent retrieves) did not exist as a risk before agents had "
+        "tool access, and the previous generation's mitigation, a static keyword "
+        "blocklist, does not generalize to it: section 2b shows the naive filter "
+        "missing exactly the attacks that are paraphrased or styled as an "
+        "official document, which is what makes a semantic classifier necessary "
+        "now rather than three years ago."
+    )
+    md.append("")
 
     # 1. Executive summary --------------------------------------------------
     md.append("## 1. Executive summary")
@@ -438,9 +485,44 @@ def generate_report(
         md.append("```")
         md.append("")
         fix = ATTACK_REMEDIATION.get(
-            aid, f"See section 6 for the `{worst['category']}` category."
+            aid, f"See section 4b for the `{worst['category']}` category."
         )
         md.append(f"**Remediation:** {fix}")
+
+        others = [r for r in residual if r["attack_id"] != aid]
+        if others:
+            md.append("")
+            md.append(
+                f"**{len(others)} other residual finding(s) after defense** "
+                "(each with its own fix, not just the one above):"
+            )
+            md.append("")
+            for r in sorted(others, key=attack_risk, reverse=True):
+                oid = r["attack_id"]
+                ofix = ATTACK_REMEDIATION.get(
+                    oid, f"See section 4b for the `{r['category']}` category."
+                )
+                md.append(
+                    f"- **`{oid}`** — {severity_of(oid)}, verdict **{r['verdict']}** "
+                    f"(risk {attack_risk(r):.1f}). *Remediation:* {ofix}"
+                )
+    md.append("")
+
+    # 4b. remediation by category - ties a fix to EACH category-level
+    # finding, not only the single "most dangerous" attack above.
+    md.append("## 4b. Remediation by category")
+    md.append("")
+    for cat in ["direct", "indirect", "tool_misuse", "exfiltration"]:
+        row = next((x for x in rows if x["category"] == cat), None)
+        status = ""
+        if row:
+            if row["after_asr"] == 0:
+                status = " _(currently: fully mitigated in this suite)_"
+            elif row["asr_delta"] < 0:
+                status = " _(currently: partially mitigated)_"
+            elif row["after_asr"] > 0:
+                status = " _(currently: NOT mitigated)_"
+        md.append(f"- **{cat}**{status}: {CATEGORY_REMEDIATION[cat]}")
     md.append("")
 
     # 5. False-positive rate ---------------------------------------
