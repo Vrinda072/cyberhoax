@@ -1,3 +1,5 @@
 groq>=1.7.0
-streamlit>=1.30
+# The UI uses Streamlit's width="stretch" API and fragments.
+streamlit>=1.40
 pandas>=2.0
+altair>=5.0
