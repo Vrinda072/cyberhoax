@@ -330,14 +330,15 @@ def _highlight_injection(text: str) -> str:
 
 
 _MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_MD_ITALIC_RE = re.compile(r"\*(.+?)\*")
 
 
 def _md_lite(escaped_text: str) -> str:
-    """Model replies use plain Markdown (bold, headings, dividers). Chat
-    bubbles are built as raw HTML, not run through Streamlit's Markdown
-    parser, so those symbols would otherwise show up literally. Operates on
-    already-escaped text, so it only ever emits tags we generate ourselves -
-    no attacker-controlled markup can slip through."""
+    """Model replies use plain Markdown (bold, italic, headings, dividers,
+    blockquotes). Chat bubbles are built as raw HTML, not run through
+    Streamlit's Markdown parser, so those symbols would otherwise show up
+    literally. Operates on already-escaped text, so it only ever emits tags
+    we generate ourselves - no attacker-controlled markup can slip through."""
     lines = []
     for line in escaped_text.split("\n"):
         stripped = line.strip()
@@ -345,13 +346,17 @@ def _md_lite(escaped_text: str) -> str:
             lines.append('<hr style="border:none;border-top:1px solid currentColor;'
                          'opacity:.25;margin:6px 0">')
             continue
+        if stripped.startswith("&gt; "):
+            line = stripped[5:]
         if stripped.startswith("#### "):
             line = f"<b>{stripped[5:]}</b>"
         elif stripped.startswith("### "):
             line = f"<b>{stripped[4:]}</b>"
         elif stripped.startswith("## "):
             line = f"<b>{stripped[3:]}</b>"
-        lines.append(_MD_BOLD_RE.sub(r"<b>\1</b>", line))
+        line = _MD_BOLD_RE.sub(r"<b>\1</b>", line)
+        line = _MD_ITALIC_RE.sub(r"<i>\1</i>", line)
+        lines.append(line)
     return "\n".join(lines)
 
 
