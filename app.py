@@ -3,8 +3,8 @@ app.py - Streamlit UI for the LLM & AI Agent Security Testing Harness.
 
     streamlit run app.py
 
-By default it just LOADS the saved runs/*.json (no API calls, $0). Flip
-"Run live against Groq" in the sidebar to execute the suite.
+Loads the saved runs/*.json on open (no API calls). Click "Run suite" in the
+sidebar to execute the suite live against Groq ($0, free tier).
 
 ------------------------------------------------------------------------------
 HOW TO EXTEND (everything here is meant to be edited):
@@ -60,6 +60,16 @@ st.markdown(
       [data-testid="stToolbarActions"], [data-testid="stAppDeployButton"],
       [data-testid="stMainMenu"], [data-testid="stDecoration"], #MainMenu, footer { display: none; }
       h1, h2, h3, h4 { letter-spacing: -0.01em; color: var(--ink); }
+
+      /* --- sidebar: pinned open at all times, not collapsible --- */
+      [data-testid="stSidebar"] {
+        transform: none !important; visibility: visible !important;
+        position: relative !important; width: 300px !important; min-width: 300px !important;
+        box-shadow: none !important;
+      }
+      [data-testid="stSidebarCollapseButton"], [data-testid="stExpandSidebarButton"] {
+        display: none !important;
+      }
 
       /* --- masthead: official-report header, not a hero banner --- */
       .masthead {
@@ -997,13 +1007,11 @@ def sidebar() -> dict:
         st.header("Run")
         mode = st.radio("Mode", ["Both (before / after)", "Undefended only",
                                  "Defended only"])
-        live = st.toggle("Run live against Groq", value=False,
-                         help="Off = just load saved runs/*.json ($0).")
-        go = st.button("Run suite", type="primary", use_container_width=True)
+        go = st.button("Run suite", type="primary", use_container_width=True,
+                       help="Runs live against Groq.")
         st.caption("$0 - Groq free tier.")
 
-    return {"trials": trials, "threshold": threshold, "mode": mode,
-            "live": live, "go": go}
+    return {"trials": trials, "threshold": threshold, "mode": mode, "go": go}
 
 
 # ---------------------------------------------------------------------------
@@ -1022,11 +1030,8 @@ def main() -> None:
     cfg = sidebar()
 
     if cfg["go"]:
-        if cfg["live"]:
-            with st.status("Running suite against Groq...", expanded=True):
-                run_live(cfg["mode"], cfg["trials"], cfg["threshold"])
-        else:
-            st.toast("Live run is off - showing saved results.")
+        with st.status("Running suite against Groq...", expanded=True):
+            run_live(cfg["mode"], cfg["trials"], cfg["threshold"])
 
     undef, defd = current_data()
 

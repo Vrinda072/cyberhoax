@@ -7,7 +7,8 @@ Start the app once, before you're called up:
 ```
 
 Everything below reads the committed `runs/*.json` - no API calls, no rate-limit
-risk on stage. Leave **"Run live against Groq"** in the sidebar switched off.
+risk on stage. Don't click **Run suite** in the sidebar; the tabs already show
+the saved results.
 
 ---
 
@@ -78,8 +79,8 @@ button if a judge wants a copy.
 ## If someone asks "does this actually call a real model right now"
 
 Don't improvise it live. Beforehand, in the sidebar: set **Mode = Undefended
-only**, **Trials = 1**, flip **Run live against Groq** on, click **Run suite**.
-One attack's worth of real Groq calls, ~10-20s, safe token cost. Do this as a
+only**, **Trials = 1**, click **Run suite** - it always runs live against Groq.
+A small batch of real Groq calls, ~10-20s, safe token cost. Do this as a
 rehearsed aside, not mid-flow - a rate limit mid-demo is the one thing that
 can derail this.
 
