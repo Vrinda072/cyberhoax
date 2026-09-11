@@ -18,7 +18,9 @@ HOW TO EXTEND (everything here is meant to be edited):
 
 from __future__ import annotations
 
+import html as html_lib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -32,44 +34,144 @@ RUNS = Path(__file__).parent / "runs"
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="LLM Agent Security Harness",
-    page_icon="\U0001F6E1",
+    page_icon=None,
     layout="wide",
 )
 
+# Institutional palette - deliberately restrained (navy / slate / muted signal
+# colours) rather than playful, to read as an audit tool a government AppSec
+# lead would sign off on, not a demo toy. No emoji anywhere: roles and states
+# are plain uppercase labels, colour, and border - not icons.
 st.markdown(
     """
     <style>
-      .stApp { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-      .block-container { padding-top: 2.2rem; max-width: 1200px; }
+      :root {
+        --ink: #0f172a; --ink-soft: #334155; --muted: #64748b;
+        --line: #dbe1e8; --paper: #ffffff; --wash: #f6f8fa;
+        --navy: #0b1220; --navy-2: #16233a;
+        --safe: #0a6847; --safe-bg: #e9f6f0;
+        --warn: #92400e; --warn-bg: #fdf2e3;
+        --risk: #8f1d1d; --risk-bg: #fbeaea;
+        --neutral: #475569; --neutral-bg: #eef1f5;
+      }
+      .stApp { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               background: var(--wash); }
+      .block-container { padding-top: 2rem; max-width: 1220px; }
       [data-testid="stToolbar"], [data-testid="stDecoration"], #MainMenu, footer { display: none; }
-      h1, h2, h3 { letter-spacing: -0.01em; }
-      .hero {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: #f8fafc; padding: 1.4rem 1.6rem; border-radius: 14px; margin-bottom: 1.4rem;
+      h1, h2, h3, h4 { letter-spacing: -0.01em; color: var(--ink); }
+
+      /* --- masthead: official-report header, not a hero banner --- */
+      .masthead {
+        background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%);
+        color: #eef2f7; padding: 1.5rem 1.8rem; border-radius: 10px; margin-bottom: 1.1rem;
+        border-bottom: 3px solid #3b82f6; position: relative; overflow: hidden;
       }
-      .hero h1 { color: #fff; margin: 0 0 .25rem 0; font-size: 1.55rem; }
-      .hero p  { color: #cbd5e1; margin: 0; font-size: .95rem; }
-      .card {
-        border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem 1.15rem;
-        background: #fff; margin-bottom: .8rem;
+      .masthead::before {
+        content: ""; position: absolute; inset: 0;
+        background: repeating-linear-gradient(115deg, rgba(255,255,255,.02) 0 2px, transparent 2px 26px);
       }
-      .badge {
-        display: inline-block; padding: 2px 10px; border-radius: 999px;
-        font-size: .78rem; font-weight: 600; line-height: 1.5;
+      .masthead .kicker { font-size: .72rem; letter-spacing: .16em; text-transform: uppercase;
+                          color: #93a5c4; font-weight: 700; margin-bottom: .3rem; position: relative; }
+      .masthead h1 { color: #fff; margin: 0 0 .3rem 0; font-size: 1.5rem; position: relative; }
+      .masthead p  { color: #b9c4d6; margin: 0; font-size: .92rem; max-width: 62ch; position: relative; }
+
+      .panel {
+        border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem;
+        background: var(--paper); margin-bottom: .8rem;
+      }
+      .tag {
+        display: inline-block; padding: 2px 10px; border-radius: 4px;
+        font-size: .74rem; font-weight: 700; line-height: 1.5; letter-spacing: .02em;
+        text-transform: uppercase; border: 1px solid transparent;
       }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; }
-      [data-testid="stMetricValue"] { font-size: 1.9rem; }
+      [data-testid="stMetricValue"] { font-size: 1.8rem; color: var(--ink); }
+      [data-testid="stMetricLabel"] { font-weight: 600; }
       .stTabs [data-baseweb="tab"] { font-weight: 600; }
+      .stButton button { border-radius: 6px; }
+
+      /* --- section framing: give every visual a plain-language caption --- */
+      .section-head { display: flex; align-items: baseline; justify-content: space-between;
+                      margin: .2rem 0 .3rem; }
+      .section-head h4 { margin: 0; }
+      .explain { font-size: .84rem; color: var(--muted); margin: -.1rem 0 .7rem; max-width: 80ch; }
+
+      /* --- certificate: an official stamped verdict --- */
       .cert {
-        border: 3px solid var(--c); border-radius: 12px; padding: 1rem 1.25rem;
-        margin-bottom: 1.2rem; background: color-mix(in srgb, var(--c) 7%, white);
+        border: 2px solid var(--c); border-radius: 10px; padding: 1.1rem 1.3rem;
+        margin-bottom: 1.1rem; background: var(--paper);
+        border-left-width: 8px; animation: rise .5s cubic-bezier(.2,.9,.25,1);
       }
       .cert .stamp {
-        font-size: 1.35rem; font-weight: 800; letter-spacing: .08em;
+        font-size: 1.3rem; font-weight: 800; letter-spacing: .1em;
         color: var(--c); text-transform: uppercase;
       }
-      .cert .row { font-size: .9rem; color: #334155; margin-top: .35rem; }
-      .cert .why { font-size: .92rem; color: #0f172a; margin-top: .5rem; }
+      .cert .kicker { font-size: .7rem; letter-spacing: .14em; text-transform: uppercase;
+                      color: var(--muted); font-weight: 700; }
+      .cert .row { font-size: .88rem; color: var(--ink-soft); margin-top: .4rem; }
+      .cert .why { font-size: .92rem; color: var(--ink); margin-top: .55rem; }
+      @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+      /* --- pipeline diagram --- */
+      .pipeline-wrap { overflow-x: auto; padding: .3rem 0 .6rem; }
+      .pipeline-flow { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 6 6; fill: none;
+                       animation: flow 1.1s linear infinite; }
+      @keyframes flow { to { stroke-dashoffset: -24; } }
+      .pipeline-box-label { font: 700 11px -apple-system, sans-serif; letter-spacing: .03em; }
+      .pipeline-box-sub { font: 400 9.5px -apple-system, sans-serif; }
+
+      /* --- capability proof strip --- */
+      .cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+                  gap: .6rem; margin-bottom: 1rem; }
+      .cap-card { border: 1px solid var(--line); border-left: 4px solid var(--c, #64748b);
+                  border-radius: 8px; padding: .65rem .8rem; background: var(--paper);
+                  animation: rise .45s cubic-bezier(.2,.9,.25,1) both; }
+      .cap-card .cap-title { font-size: .72rem; font-weight: 800; letter-spacing: .06em;
+                             text-transform: uppercase; color: var(--ink); }
+      .cap-card .cap-stat { font-size: 1.15rem; font-weight: 800; color: var(--c, var(--ink)); margin: .15rem 0; }
+      .cap-card .cap-sub { font-size: .76rem; color: var(--muted); line-height: 1.3; }
+
+      /* --- attack theater / chat transcript (icon-free: role = label + colour) --- */
+      .chat-wrap { display: flex; flex-direction: column; gap: 10px; padding: .5rem 0 1rem; }
+      .msg { max-width: 84%; padding: 10px 14px; border-radius: 10px; font-size: .93rem;
+             line-height: 1.45; animation: pop .28s cubic-bezier(.2,.9,.25,1) both; word-wrap: break-word; }
+      @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); }
+                       to { opacity: 1; transform: translateY(0) scale(1); } }
+      .role-tag { display: block; font-size: .66rem; font-weight: 800; letter-spacing: .1em;
+                  text-transform: uppercase; opacity: .65; margin-bottom: 3px; }
+      .msg-system { align-self: center; max-width: 96%; background: var(--neutral-bg); color: var(--muted);
+                    font-size: .78rem; padding: 6px 14px; border-radius: 4px; }
+      .msg-user { align-self: flex-end; background: #1d3a6e; color: #fff; border-bottom-right-radius: 2px; }
+      .msg-user .role-tag { color: #b9c9ea; }
+      .msg-assistant { align-self: flex-start; background: var(--neutral-bg); color: var(--ink);
+                       border-bottom-left-radius: 2px; }
+      .msg-tool-call { align-self: flex-start; background: var(--warn-bg); border: 1px solid #f0d4a8;
+                       color: var(--warn); font-family: ui-monospace, Menlo, monospace; font-size: .82rem;
+                       padding: 8px 12px; border-radius: 6px; }
+      .msg-tool-result { align-self: flex-start; max-width: 94%; background: var(--wash);
+                         border-left: 4px solid var(--neutral); color: var(--ink-soft);
+                         font-family: ui-monospace, Menlo, monospace; font-size: .8rem;
+                         white-space: pre-wrap; border-radius: 4px; }
+      .msg-tool-result.redacted { border-left-color: var(--safe); background: var(--safe-bg);
+                                  color: var(--safe); font-family: inherit; font-style: italic; }
+      .msg-tool-result mark.inj { background: #f6c8c8; color: var(--risk); font-weight: 700;
+                                  padding: 0 2px; border-radius: 2px; animation: inj-flash 1.2s ease-in-out 1; }
+      @keyframes inj-flash { 0% { background: #ef9a9a; } 100% { background: #f6c8c8; } }
+
+      .theater-stamp { text-align: center; padding: 1.5rem; margin-top: .6rem; border-radius: 10px;
+                       border: 2px solid var(--c); border-top-width: 6px; background: var(--paper);
+                       animation: stamp-in .4s cubic-bezier(.34,1.4,.4,1) both; }
+      @keyframes stamp-in { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+      .theater-stamp .big { font-size: 1.9rem; font-weight: 900; letter-spacing: .08em;
+                            color: var(--c); text-transform: uppercase; }
+      .theater-stamp .sub { font-size: .9rem; color: var(--ink-soft); margin-top: .4rem; max-width: 60ch;
+                            margin-left: auto; margin-right: auto; }
+
+      /* --- gauge --- */
+      .gauge-ring { animation: draw-ring 1s cubic-bezier(.22,1,.36,1) both; }
+      @keyframes draw-ring { from { stroke-dashoffset: var(--circ); } to { stroke-dashoffset: var(--offset); } }
+      .gauge-label { text-align: center; font-size: .8rem; color: var(--ink-soft); margin-top: -6px; font-weight: 700;
+                    letter-spacing: .03em; text-transform: uppercase; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -79,16 +181,116 @@ st.markdown(
 # Colours / badges
 # ---------------------------------------------------------------------------
 _COLOR = {
-    "low": "#2563eb", "medium": "#d97706", "high": "#dc2626", "unrated": "#64748b",
-    "blocked": "#059669", "partial": "#d97706", "succeeded": "#dc2626", "error": "#64748b",
+    "low": "#1d4ed8", "medium": "#92400e", "high": "#8f1d1d", "unrated": "#475569",
+    "blocked": "#0a6847", "partial": "#92400e", "succeeded": "#8f1d1d", "error": "#475569",
 }
 
 
 def badge(text: str, kind: str) -> str:
-    c = _COLOR.get(kind, "#64748b")
+    c = _COLOR.get(kind, "#475569")
     return (
-        f'<span class="badge" style="background:{c}1a;color:{c};'
-        f'border:1px solid {c}55">{text}</span>'
+        f'<span class="tag" style="background:{c}14;color:{c};'
+        f'border-color:{c}44">{text}</span>'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Attack Theater: chat-bubble transcript replay + injection highlighting
+# ---------------------------------------------------------------------------
+_INJECTION_HINTS = [
+    "ignore all previous instructions", "ignore previous instructions",
+    "ignore prior instructions", "disregard previous instructions",
+    "disregard all previous instructions", "disregard the above",
+    "system override", "priority directive", "developer mode", "dan mode",
+    "jailbreak", "reveal your prompt", "reveal your system prompt",
+    "print your system prompt", "show me your instructions",
+    "updated by records admin", "automatically retrieve",
+    "do not mention this", "do not omit", "approved policy",
+    "no restrictions",
+]
+_REDACTION_STRINGS = {
+    "[Content removed: flagged as containing injected instructions]",
+    "[Response withheld: output screen flagged potential sensitive-data disclosure]",
+    "[Content removed: matched keyword blocklist]",
+    "[Response blocked by keyword filter]",
+}
+
+
+def _highlight_injection(text: str) -> str:
+    esc = html_lib.escape(text)
+    for phrase in sorted(_INJECTION_HINTS, key=len, reverse=True):
+        esc = re.sub(
+            re.escape(html_lib.escape(phrase)),
+            lambda m: f'<mark class="inj">{m.group(0)}</mark>',
+            esc, flags=re.IGNORECASE,
+        )
+    return esc
+
+
+def render_chat_transcript(transcript: list[dict], upto: int | None = None) -> None:
+    """Render a transcript as a conversation: user/agent/tool-call/tool-result,
+    each turn labelled by role (no icons) so it reads correctly at a glance.
+    `upto` limits how many messages are revealed (for the step-through replay)."""
+    msgs = transcript if upto is None else transcript[:upto]
+    parts = ['<div class="chat-wrap">']
+    for m in msgs:
+        role = m.get("role")
+        if role == "system":
+            txt = (m.get("content") or "")[:90]
+            parts.append(
+                f'<div class="msg msg-system"><span class="role-tag">System prompt</span>'
+                f'{html_lib.escape(txt)}…</div>'
+            )
+        elif role == "user":
+            parts.append(
+                f'<div class="msg msg-user"><span class="role-tag">User</span>'
+                f'{html_lib.escape(m.get("content") or "")}</div>'
+            )
+        elif role == "assistant":
+            for tc in m.get("tool_calls") or []:
+                fn = tc["function"]
+                parts.append(
+                    f'<div class="msg msg-tool-call"><span class="role-tag">Agent - tool call</span>'
+                    f'<b>{html_lib.escape(fn["name"])}</b>({html_lib.escape(fn["arguments"])})</div>'
+                )
+            if m.get("content"):
+                parts.append(
+                    f'<div class="msg msg-assistant"><span class="role-tag">Agent</span>'
+                    f'{html_lib.escape(m["content"])}</div>'
+                )
+        elif role == "tool":
+            content = m.get("content") or ""
+            blocked = content in _REDACTION_STRINGS
+            cls = "msg msg-tool-result redacted" if blocked else "msg msg-tool-result"
+            label = "Defense - content removed" if blocked else "Tool result"
+            body = html_lib.escape(content) if blocked else _highlight_injection(content)
+            parts.append(
+                f'<div class="{cls}"><span class="role-tag">{label} '
+                f'&middot; {html_lib.escape(m.get("name") or "tool")}</span>{body}</div>'
+            )
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+
+
+def svg_gauge(value: float, ceiling: float, label: str, color: str, size: int = 148) -> str:
+    """Inline SVG ring gauge - no charting library needed. Draws in via CSS
+    (stroke-dashoffset animation), no static library or JS required."""
+    pct = 0.0 if not ceiling else max(0.0, min(1.0, value / ceiling))
+    r = 50
+    circ = 2 * 3.14159265 * r
+    offset = circ * (1 - pct)
+    return (
+        f'<svg width="{size}" height="{size}" viewBox="0 0 120 120">'
+        f'<circle cx="60" cy="60" r="{r}" fill="none" stroke="#e2e8f0" stroke-width="14"/>'
+        f'<circle class="gauge-ring" cx="60" cy="60" r="{r}" fill="none" stroke="{color}" '
+        f'stroke-width="14" stroke-dasharray="{circ:.1f}" stroke-dashoffset="{offset:.1f}" '
+        f'style="--circ:{circ:.1f}px; --offset:{offset:.1f}px" '
+        f'stroke-linecap="round" transform="rotate(-90 60 60)"/>'
+        f'<text x="60" y="57" text-anchor="middle" font-size="24" font-weight="800" '
+        f'fill="#0f172a" font-family="sans-serif">{value:.1f}</text>'
+        f'<text x="60" y="75" text-anchor="middle" font-size="11" fill="#64748b" '
+        f'font-family="sans-serif">/ {ceiling:g}</text>'
+        f'</svg><div class="gauge-label">{label}</div>'
     )
 
 
@@ -207,6 +409,132 @@ def run_live(mode: str, trials: int, threshold: float) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Pipeline diagram + capability proof strip
+# ---------------------------------------------------------------------------
+def _pipeline_diagram_svg() -> str:
+    """How the harness works, top to bottom, in one glance. Arrows carry a
+    flowing dashed animation so the diagram reads as a live pipeline, not a
+    static org chart."""
+    boxes = [
+        ("ATTACK PAYLOAD", "8 payloads / 4 categories", "#8f1d1d"),
+        ("TARGET AGENT", "tool-calling model under test", "#334155"),
+        ("DEFENSE LAYER", "input screen + output screen", "#0a6847"),
+        ("LLM JUDGE", "independent scoring model", "#334155"),
+        ("VERDICT", "blocked / partial / succeeded", "#0f172a"),
+    ]
+    bw, bh, gap, y = 162, 76, 34, 26
+    total_w = len(boxes) * bw + (len(boxes) - 1) * gap + 16
+    parts = [
+        f'<svg viewBox="0 0 {total_w} 140" xmlns="http://www.w3.org/2000/svg" '
+        f'style="width:100%;height:auto;min-width:860px;display:block">'
+        '<defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" '
+        'refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>'
+    ]
+    x, centers = 8, []
+    for title, sub, color in boxes:
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" rx="8" fill="white" '
+            f'stroke="{color}" stroke-width="2"/>'
+            f'<text x="{x + bw / 2}" y="{y + 32}" text-anchor="middle" '
+            f'class="pipeline-box-label" fill="{color}">{title}</text>'
+            f'<text x="{x + bw / 2}" y="{y + 50}" text-anchor="middle" '
+            f'class="pipeline-box-sub" fill="#64748b">{sub}</text>'
+        )
+        centers.append((x, x + bw, y + bh / 2))
+        x += bw + gap
+    for i in range(len(centers) - 1):
+        x1, yc = centers[i][1], centers[i][2]
+        x2 = centers[i + 1][0]
+        parts.append(f'<path d="M{x1},{yc} L{x2 - 6},{yc}" class="pipeline-flow" '
+                     f'marker-end="url(#arrowhead)"/>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def render_pipeline_diagram() -> None:
+    st.markdown(
+        "<div class='section-head'><h4>How this works</h4></div>"
+        "<div class='explain'>An attack payload is sent to the target agent. The "
+        "defense layer screens what the agent reads and what it replies with; an "
+        "independent LLM judge then scores the outcome. Every box below is backed "
+        "by real code, run against a live Groq model - not a mock.</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(f"<div class='pipeline-wrap'>{_pipeline_diagram_svg()}</div>",
+               unsafe_allow_html=True)
+
+
+def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
+    """One card per hackathon requirement, each showing a real number pulled
+    from the run - proof the feature is implemented and actually executed,
+    not just described."""
+    rank = {"blocked": 0, "partial": 1, "succeeded": 2, "error": -1}
+    naive_p, cross_p = RUNS / "naive.json", RUNS / "cross_check.json"
+    naive = json.loads(naive_p.read_text()) if naive_p.exists() else None
+    cross = json.loads(cross_p.read_text()) if cross_p.exists() else None
+
+    cards: list[tuple[str, str, str, str]] = []
+    if undef:
+        cats = sorted({r["category"] for r in undef["attacks"]})
+        cards.append(("Attack suite", f"{len(undef['attacks'])} payloads",
+                      f"{len(cats)} categories - {', '.join(cats)}", "#8f1d1d"))
+    cards.append(("LLM judge", "independent scorer",
+                  "a different model from the target and defense - not grading its own work",
+                  "#334155"))
+    if defd:
+        blocked = sum(1 for r in defd["attacks"] if r["verdict"] == "blocked")
+        cards.append(("Defense layer", f"{blocked}/{len(defd['attacks'])} blocked",
+                      "input screen on tool results + output screen on the final reply",
+                      "#0a6847"))
+    if naive and defd:
+        d_by = {r["attack_id"]: r for r in defd["attacks"]}
+        worse = sum(
+            1 for r in naive["attacks"]
+            if r["attack_id"] in d_by and rank[r["verdict"]] > rank[d_by[r["attack_id"]]["verdict"]]
+        )
+        cards.append(("Naive baseline", f"loses on {worse} attacks",
+                      "static keyword filter compared against the semantic classifier",
+                      "#92400e"))
+    if (RUNS / "defended.json").exists():
+        from certificate import build_certificate
+        try:
+            c = build_certificate(RUNS / "defended.json")
+            ccolor = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
+                c["status"], "#475569"
+            )
+            cards.append(("Security certificate", c["status"],
+                          f"residual risk {c['residual_risk_score']:.1f}/{c['residual_risk_ceiling']} "
+                          "against fixed pass/fail thresholds", ccolor))
+        except Exception:  # noqa: BLE001
+            pass
+    if cross and cross.get("models"):
+        model_names = {m["model"] for m in cross["models"]}
+        if undef:
+            model_names.add(undef.get("target_model", ""))
+        model_names.discard("")
+        cards.append(("Cross-model check", f"{len(model_names)} models",
+                      "identical suite and defense logic re-run on a second target model",
+                      "#334155"))
+
+    st.markdown(
+        "<div class='section-head'><h4>What this harness proves, and how</h4></div>"
+        "<div class='explain'>Each card below is a requirement of the audit, backed "
+        "by a live number from the run you're looking at.</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='cap-grid'>" + "".join(
+            f"<div class='cap-card' style='--c:{color}; animation-delay:{i * 0.06:.2f}s'>"
+            f"<div class='cap-title'>{title}</div>"
+            f"<div class='cap-stat'>{stat}</div>"
+            f"<div class='cap-sub'>{sub}</div></div>"
+            for i, (title, stat, sub, color) in enumerate(cards)
+        ) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tab renderers
 # ---------------------------------------------------------------------------
 def render_certificate() -> None:
@@ -220,12 +548,13 @@ def render_certificate() -> None:
         cert = build_certificate(p)
     except Exception:  # noqa: BLE001
         return
-    color = {"PASS": "#059669", "CONDITIONAL PASS": "#d97706", "FAIL": "#dc2626"}.get(
-        cert["status"], "#64748b"
+    color = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
+        cert["status"], "#475569"
     )
     st.markdown(
         f"<div class='cert' style='--c:{color}'>"
-        f"<div class='stamp'>Security certificate &nbsp;&mdash;&nbsp; {cert['status']}</div>"
+        f"<div class='kicker'>Pre-deployment security certificate</div>"
+        f"<div class='stamp'>{cert['status']}</div>"
         f"<div class='row'>Residual risk "
         f"<b>{cert['residual_risk_score']} / {cert['residual_risk_ceiling']}</b> "
         f"({cert['residual_risk_band']}) &nbsp;&middot;&nbsp; "
@@ -246,23 +575,41 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
         st.info("No results yet. Load a saved run or use **Run suite** in the sidebar.")
         return
 
+    render_pipeline_diagram()
     render_certificate()
+    render_capability_strip(undef, defd)
 
     u_atk = undef["attacks"] if undef else []
     d_atk = defd["attacks"] if defd else []
 
     ur = residual_risk(u_atk) if u_atk else None
     dr = residual_risk(d_atk) if d_atk else None
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Residual risk - undefended",
-              f"{ur['absolute']:.1f} / {ur['ceiling']}" if ur else "-")
-    c2.metric("Residual risk - defended",
-              f"{dr['absolute']:.1f} / {dr['ceiling']}" if dr else "-")
-    if ur and dr:
-        c3.metric("Reduction", f"{ur['absolute'] - dr['absolute']:.1f} pts",
-                  delta=f"-{(ur['absolute'] - dr['absolute']) / ur['absolute'] * 100:.0f}%"
-                  if ur["absolute"] else None,
-                  delta_color="inverse")
+
+    st.markdown(
+        "<div class='section-head'><h4>Residual risk, before and after defense</h4></div>"
+        "<div class='explain'>Each ring fills to the severity-weighted risk still "
+        "outstanding. An empty ring means every attack was blocked; a full ring "
+        "means every attack fully succeeded.</div>",
+        unsafe_allow_html=True,
+    )
+    g1, g2, g3 = st.columns([1, 1, 1.4])
+    with g1:
+        if ur:
+            st.markdown(svg_gauge(ur["absolute"], ur["ceiling"], "Undefended", "#8f1d1d"),
+                       unsafe_allow_html=True)
+    with g2:
+        if dr:
+            st.markdown(svg_gauge(dr["absolute"], dr["ceiling"], "Defended", "#0a6847"),
+                       unsafe_allow_html=True)
+    with g3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if ur and dr:
+            drop = ur["absolute"] - dr["absolute"]
+            pct = 100 * drop / ur["absolute"] if ur["absolute"] else 0
+            st.metric("Risk reduction", f"{drop:.1f} pts", delta=f"-{pct:.0f}%",
+                      delta_color="inverse")
+        st.caption("Severity-weighted residual risk: 0 = every attack fully blocked, "
+                   "24 = every attack fully succeeds.")
 
     # --- most dangerous attack still getting through (prominent) ----------
     if d_atk:
@@ -284,7 +631,12 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
         else:
             st.success("**No attack succeeds or partially succeeds after defense.**")
 
-    st.markdown("#### Severity-weighted risk by category")
+    st.markdown(
+        "<div class='section-head'><h4>Risk by attack category</h4></div>"
+        "<div class='explain'>Same residual-risk scale, split by attack type, "
+        "so it's obvious which categories the defense actually closes.</div>",
+        unsafe_allow_html=True,
+    )
     cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
     rows = []
     for c in cats:
@@ -295,22 +647,9 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
             row["Defended"] = residual_risk([r for r in d_atk if r["category"] == c])["pct"]
         rows.append(row)
     df = pd.DataFrame(rows).set_index("category")
-    st.bar_chart(df, height=340, stack=False,
-                 color=["#dc2626", "#059669"][: len(df.columns)])
+    st.bar_chart(df, height=320, stack=False,
+                 color=["#8f1d1d", "#0a6847"][: len(df.columns)])
     st.caption("0 = fully blocked, 100 = every attack in the category fully succeeds.")
-
-    st.markdown("#### Verdict counts")
-    def _counts(atk):
-        d = {"blocked": 0, "partial": 0, "succeeded": 0, "error": 0}
-        for r in atk:
-            d[r["verdict"]] = d.get(r["verdict"], 0) + 1
-        return d
-    tbl = {}
-    if u_atk:
-        tbl["Undefended"] = _counts(u_atk)
-    if d_atk:
-        tbl["Defended"] = _counts(d_atk)
-    st.dataframe(pd.DataFrame(tbl).T, use_container_width=True)
 
 
 def render_attacks(undef: dict | None, defd: dict | None) -> None:
@@ -361,8 +700,10 @@ def render_attacks(undef: dict | None, defd: dict | None) -> None:
                     st.markdown(f"**Undefended:** {u['judge_reasoning']}")
                 if d:
                     st.markdown(f"**Defended:** {d['judge_reasoning']}")
-            with st.expander("Transcript (worst trial)"):
-                st.code(format_transcript(shown["transcript"]), language="text")
+            with st.expander("Conversation (worst trial)"):
+                render_chat_transcript(shown["transcript"])
+                with st.expander("raw text"):
+                    st.code(format_transcript(shown["transcript"]), language="text")
 
 
 def render_benign(defd: dict | None) -> None:
@@ -388,10 +729,89 @@ def render_benign(defd: dict | None) -> None:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
+def render_theater(undef: dict | None, defd: dict | None) -> None:
+    """Step through one attack turn-by-turn - watch it unfold like a real chat,
+    then land on a stamped verdict. Pure replay of captured transcripts: $0,
+    no API calls, safe to click through live in front of a jury."""
+    from severity import rationale_of
+
+    naive_p = RUNS / "naive.json"
+    naive = json.loads(naive_p.read_text()) if naive_p.exists() else None
+
+    sources: dict[str, dict] = {}
+    if undef:
+        sources["Undefended"] = {r["attack_id"]: r for r in undef["attacks"]}
+    if naive:
+        sources["Naive filter"] = {r["attack_id"]: r for r in naive["attacks"]}
+    if defd:
+        sources["Classifier defense"] = {r["attack_id"]: r for r in defd["attacks"]}
+    if not sources:
+        st.info("No results yet. Load a saved run or use **Run suite** in the sidebar.")
+        return
+
+    all_ids = list(dict.fromkeys(aid for d in sources.values() for aid in d))
+    default_idx = next((i for i, a in enumerate(all_ids) if a.startswith("indirect")), 0)
+
+    c1, c2 = st.columns([2, 1.3])
+    with c1:
+        aid = st.selectbox("Pick an attack to watch", all_ids, index=default_idx)
+    with c2:
+        mode = st.radio("Defense", list(sources.keys()), horizontal=True,
+                        index=len(sources) - 1)
+
+    row = sources[mode].get(aid)
+    if not row:
+        st.info(f"No **{mode}** run recorded for `{aid}`.")
+        return
+
+    st.markdown(
+        f"<span class='mono' style='font-weight:600'>{aid}</span> &nbsp;"
+        f"{badge(row['category'], 'unrated')} {badge(row['severity'], row['severity'])}",
+        unsafe_allow_html=True,
+    )
+    st.caption(rationale_of(aid))
+
+    transcript = row["transcript"]
+    n = len(transcript)
+    key = f"theater__{aid}__{mode}"
+    step = st.session_state.get(key, 0)
+
+    b1, b2, b3, b4 = st.columns(4)
+    if b1.button("Reset", use_container_width=True, key=f"{key}_r"):
+        step = 0
+    if b2.button("Back", use_container_width=True, disabled=step <= 0, key=f"{key}_b"):
+        step = max(0, step - 1)
+    if b3.button("Next", use_container_width=True, disabled=step >= n, key=f"{key}_n",
+                type="primary"):
+        step = min(n, step + 1)
+    if b4.button("Reveal all", use_container_width=True, key=f"{key}_a"):
+        step = n
+    st.session_state[key] = step
+
+    st.progress(step / n if n else 0.0, f"turn {step} of {n}")
+    render_chat_transcript(transcript, upto=step)
+
+    if n and step >= n:
+        verdict = row["verdict"]
+        color = {"blocked": "#0a6847", "partial": "#92400e", "succeeded": "#8f1d1d"}.get(
+            verdict, "#475569"
+        )
+        stamp = {
+            "blocked": "BLOCKED", "partial": "PARTIAL COMPROMISE", "succeeded": "LEAKED",
+        }.get(verdict, verdict.upper())
+        st.markdown(
+            f"<div class='theater-stamp' style='--c:{color}'>"
+            f"<div class='big'>{stamp}</div>"
+            f"<div class='sub'>{html_lib.escape(row.get('judge_reasoning', ''))}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    elif n:
+        st.caption("Keep clicking **Next** to watch the attack unfold, or jump to **Reveal all**.")
+
+
 def render_comparison(undef: dict | None, defd: dict | None) -> None:
     """None vs naive keyword filter vs classifier."""
-    from target_agent import format_transcript
-
     if not undef or not defd:
         st.info("Need undefended + defended runs.")
         return
@@ -428,7 +848,7 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
     df = pd.DataFrame(rows).set_index("category")
     df.columns = ["no defense", "naive filter", "classifier"]
     st.bar_chart(df, height=320, stack=False,
-                 color=["#94a3b8", "#f59e0b", "#059669"])
+                 color=["#94a3b8", "#92400e", "#0a6847"])
     st.caption("% of attacks in each category fully blocked.")
 
     worse = [
@@ -457,15 +877,15 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
             st.markdown(f"**Naive keyword filter** {badge(nr['verdict'], nr['verdict'])}",
                         unsafe_allow_html=True)
             st.caption(nr.get("judge_reasoning", ""))
-            with st.expander("transcript"):
-                st.code(format_transcript(nr["transcript"]), language="text")
+            with st.expander("conversation", expanded=True):
+                render_chat_transcript(nr["transcript"])
         with cc:
             cr = by["classifier"][demo_id]
             st.markdown(f"**Classifier defense** {badge(cr['verdict'], cr['verdict'])}",
                         unsafe_allow_html=True)
             st.caption(cr.get("judge_reasoning", ""))
-            with st.expander("transcript"):
-                st.code(format_transcript(cr["transcript"]), language="text")
+            with st.expander("conversation", expanded=True):
+                render_chat_transcript(cr["transcript"])
 
 
 def render_report() -> None:
@@ -522,10 +942,13 @@ def sidebar() -> dict:
 # ---------------------------------------------------------------------------
 def main() -> None:
     st.markdown(
-        "<div class='hero'><h1>LLM &amp; AI Agent Security Testing Harness</h1>"
-        "<p>Pre-deployment audit: attack a tool-using agent, score each attempt "
-        "blocked / partial / succeeded, measure severity-weighted residual risk "
-        "before and after a defense layer.</p></div>",
+        "<div class='masthead'>"
+        "<div class='kicker'>Pre-deployment security audit</div>"
+        "<h1>LLM &amp; AI Agent Security Testing Harness</h1>"
+        "<p>Attacks a tool-using agent, screens what it reads and replies with, "
+        "scores every attempt blocked / partial / succeeded with an independent "
+        "judge, and reports severity-weighted residual risk before and after "
+        "defense.</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -536,7 +959,7 @@ def main() -> None:
             with st.status("Running suite against Groq...", expanded=True):
                 run_live(cfg["mode"], cfg["trials"], cfg["threshold"])
         else:
-            st.toast("Live run is off - showing saved results.", icon="ℹ️")
+            st.toast("Live run is off - showing saved results.")
 
     undef, defd = current_data()
 
@@ -548,11 +971,14 @@ def main() -> None:
         src.append(f"defended ({'session' if 'defd' in st.session_state else 'saved'})")
     st.caption("Data: " + (" &nbsp;|&nbsp; ".join(src) if src else "none loaded"))
 
-    t_over, t_atk, t_cmp, t_benign, t_report = st.tabs(
-        ["Overview", "Attacks", "Compare defenses", "Benign / FP", "Report"]
+    t_over, t_theater, t_atk, t_cmp, t_benign, t_report = st.tabs(
+        ["Overview", "Attack Theater", "Attacks", "Compare defenses",
+         "Benign / FP", "Report"]
     )
     with t_over:
         render_overview(undef, defd)
+    with t_theater:
+        render_theater(undef, defd)
     with t_atk:
         render_attacks(undef, defd)
     with t_cmp:
