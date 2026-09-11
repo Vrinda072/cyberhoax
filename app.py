@@ -783,15 +783,26 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
     all_ids = list(dict.fromkeys(aid for d in sources.values() for aid in d))
     default_idx = next((i for i, a in enumerate(all_ids) if a.startswith("indirect")), 0)
 
-    c1, c2 = st.columns([2, 1.3])
-    with c1:
-        aid = st.selectbox("Pick an attack to watch", all_ids, index=default_idx)
-    with c2:
-        mode = st.radio("Defense", list(sources.keys()), horizontal=True,
-                        index=len(sources) - 1,
-                        help="Undefended: raw agent. Naive filter: keyword "
-                             "blocklist. Classifier defense: LLM input/output "
-                             "screens.")
+    aid = st.selectbox("Pick an attack to watch", all_ids, index=default_idx)
+
+    mode_key = "theater_mode"
+    if mode_key not in st.session_state or st.session_state[mode_key] not in sources:
+        st.session_state[mode_key] = list(sources.keys())[-1]
+    mode_cols = st.columns(len(sources))
+    for i, name in enumerate(sources.keys()):
+        with mode_cols[i]:
+            selected = st.session_state[mode_key] == name
+            st.markdown(
+                f"<div style='text-align:center;font-size:.82rem;margin-bottom:.25rem;"
+                f"font-weight:{'700' if selected else '500'}'>"
+                f"{term(name, GLOSSARY.get(name.lower(), ''))}</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(name, key=f"mode_btn_{name}",
+                        type="primary" if selected else "secondary",
+                        use_container_width=True):
+                st.session_state[mode_key] = name
+    mode = st.session_state[mode_key]
 
     row = sources[mode].get(aid)
     if not row:
