@@ -495,11 +495,7 @@ def _pipeline_diagram_svg() -> str:
 
 def render_pipeline_diagram() -> None:
     st.markdown(
-        "<div class='section-head'><h4>How this works</h4></div>"
-        "<div class='explain'>An attack payload is sent to the target agent. The "
-        "defense layer screens what the agent reads and what it replies with; an "
-        "independent LLM judge then scores the outcome. Every box below is backed "
-        "by real code, run against a live Groq model - not a mock.</div>",
+        "<div class='section-head'><h4>How this works</h4></div>",
         unsafe_allow_html=True,
     )
     st.markdown(f"<div class='pipeline-wrap'>{_pipeline_diagram_svg()}</div>",
@@ -559,9 +555,7 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
                       "#334155"))
 
     st.markdown(
-        "<div class='section-head'><h4>What this harness proves, and how</h4></div>"
-        "<div class='explain'>Each card below is a requirement of the audit, backed "
-        "by a live number from the run you're looking at.</div>",
+        "<div class='section-head'><h4>What this proves</h4></div>",
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -628,10 +622,7 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
     dr = residual_risk(d_atk) if d_atk else None
 
     st.markdown(
-        "<div class='section-head'><h4>Residual risk, before and after defense</h4></div>"
-        "<div class='explain'>Each ring fills to the severity-weighted risk still "
-        "outstanding. An empty ring means every attack was blocked; a full ring "
-        "means every attack fully succeeded.</div>",
+        "<div class='section-head'><h4>Residual risk</h4></div>",
         unsafe_allow_html=True,
     )
     g1, g2, g3 = st.columns([1, 1, 1.4])
@@ -650,8 +641,7 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
             pct = 100 * drop / ur["absolute"] if ur["absolute"] else 0
             st.metric("Risk reduction", f"{drop:.1f} pts", delta=f"-{pct:.0f}%",
                       delta_color="inverse")
-        st.caption("Severity-weighted residual risk: 0 = every attack fully blocked, "
-                   "24 = every attack fully succeeds.")
+        st.caption("0 = fully blocked, 24 = fully succeeds.")
 
     # --- most dangerous attack still getting through (prominent) ----------
     if d_atk:
@@ -662,18 +652,15 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
             aid = worst["attack_id"]
             box = "error" if worst["verdict"] == "succeeded" else "warning"
             getattr(st, box)(
-                f"**Most dangerous attack still getting through: "
-                f"`{aid}`**  \n"
-                f"category `{worst['category']}` · severity **{severity_of(aid)}** · "
-                f"verdict after defense **{worst['verdict']}** · "
-                f"risk contribution {attack_risk(worst):.1f}  \n"
-                f"{rationale_of(aid)}  \n"
-                f"_Judge:_ {worst['judge_reasoning']}"
+                f"**Most dangerous attack still getting through:** `{aid}` "
+                f"({worst['category']}, {severity_of(aid)} severity, "
+                f"{worst['verdict']} after defense)  \n"
+                f"{rationale_of(aid)}"
             )
         else:
             st.success("**No attack succeeds or partially succeeds after defense.**")
 
-    with st.expander("Break risk down by attack category"):
+    with st.expander("Risk by attack category"):
         cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
         rows = []
         for c in cats:
@@ -686,14 +673,10 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
         df = pd.DataFrame(rows).set_index("category")
         st.bar_chart(df, height=300, stack=False,
                      color=["#8f1d1d", "#0a6847"][: len(df.columns)])
-        st.caption("0 = fully blocked, 100 = every attack in the category fully succeeds.")
 
     if defd and defd.get("false_positive"):
         st.markdown(
-            "<div class='section-head'><h4>Cost check: does the defense break normal use</h4></div>"
-            "<div class='explain'>A defense that blocks every attack by also blocking "
-            "everyone else isn't a defense worth shipping. This is the same benign "
-            "traffic run through the defended agent.</div>",
+            "<div class='section-head'><h4>False positives on benign use</h4></div>",
             unsafe_allow_html=True,
         )
         render_benign(defd)
@@ -799,8 +782,6 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
             f"</div>",
             unsafe_allow_html=True,
         )
-    elif n:
-        st.caption("Keep clicking **Next** to watch the attack unfold, or jump to **Reveal all**.")
 
 
 def render_comparison(undef: dict | None, defd: dict | None) -> None:
@@ -907,7 +888,6 @@ def sidebar() -> dict:
         st.text_input("Target model", TARGET_MODEL, disabled=True)
         st.text_input("Judge model", JUDGE_MODEL, disabled=True)
         st.text_input("Defense model", DEFENSE_MODEL, disabled=True)
-        st.caption("Models live in `config.py`. Change there, then rerun.")
 
         st.divider()
         trials = st.slider("Trials per attack", 1, 5, 3,
@@ -923,8 +903,7 @@ def sidebar() -> dict:
         live = st.toggle("Run live against Groq", value=False,
                          help="Off = just load saved runs/*.json ($0).")
         go = st.button("Run suite", type="primary", use_container_width=True)
-        st.caption("$0 - Groq free tier. Daily token caps apply; a capped run "
-                   "shows `error` rows instead of crashing.")
+        st.caption("$0 - Groq free tier.")
 
     return {"trials": trials, "threshold": threshold, "mode": mode,
             "live": live, "go": go}
@@ -938,10 +917,8 @@ def main() -> None:
         "<div class='masthead'>"
         "<div class='kicker'>Pre-deployment security audit</div>"
         "<h1>LLM &amp; AI Agent Security Testing Harness</h1>"
-        "<p>Attacks a tool-using agent, screens what it reads and replies with, "
-        "scores every attempt blocked / partial / succeeded with an independent "
-        "judge, and reports severity-weighted residual risk before and after "
-        "defense.</p></div>",
+        "<p>Attack an agent, score blocked / partial / succeeded, "
+        "measure residual risk before and after defense.</p></div>",
         unsafe_allow_html=True,
     )
 
