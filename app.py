@@ -57,7 +57,8 @@ st.markdown(
       .stApp { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                background: var(--wash); }
       .block-container { padding-top: 2rem; max-width: 1220px; }
-      [data-testid="stToolbar"], [data-testid="stDecoration"], #MainMenu, footer { display: none; }
+      [data-testid="stToolbarActions"], [data-testid="stAppDeployButton"],
+      [data-testid="stMainMenu"], [data-testid="stDecoration"], #MainMenu, footer { display: none; }
       h1, h2, h3, h4 { letter-spacing: -0.01em; color: var(--ink); }
 
       /* --- masthead: official-report header, not a hero banner --- */
@@ -540,7 +541,7 @@ def _pipeline_diagram_svg() -> str:
 
 def render_pipeline_diagram() -> None:
     st.markdown(
-        "<div class='section-head'><h4>How this works</h4></div>",
+        "<div class='section-head'><h4>How This Works</h4></div>",
         unsafe_allow_html=True,
     )
     st.markdown(f"<div class='pipeline-wrap'>{_pipeline_diagram_svg()}</div>",
@@ -561,14 +562,14 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
     cards: list[tuple[str, str, str, str]] = []
     if undef:
         cats = sorted({r["category"] for r in undef["attacks"]})
-        cards.append(("Attack suite", f"{len(undef['attacks'])} payloads",
+        cards.append(("Attack Suite", f"{len(undef['attacks'])} payloads",
                       f"{len(cats)} categories: {', '.join(cats)}.", "#8f1d1d"))
-    cards.append(("LLM judge", "independent scorer",
+    cards.append(("LLM Judge", "independent scorer",
                   "A different model from the target and defense - not grading its own work.",
                   "#334155"))
     if defd:
         blocked = sum(1 for r in defd["attacks"] if r["verdict"] == "blocked")
-        cards.append(("Defense layer", f"{blocked}/{len(defd['attacks'])} blocked",
+        cards.append(("Defense Layer", f"{blocked}/{len(defd['attacks'])} blocked",
                       "Input screen on tool results + output screen on the final reply.",
                       "#0a6847"))
     if naive and defd:
@@ -577,7 +578,7 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
             1 for r in naive["attacks"]
             if r["attack_id"] in d_by and rank[r["verdict"]] > rank[d_by[r["attack_id"]]["verdict"]]
         )
-        cards.append(("Naive baseline", f"loses on {worse} attacks",
+        cards.append(("Naive Baseline", f"loses on {worse} attacks",
                       "A static keyword filter, compared against the semantic classifier.",
                       "#92400e"))
     if (RUNS / "defended.json").exists():
@@ -587,7 +588,7 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
             ccolor = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
                 c["status"], "#475569"
             )
-            cards.append(("Security certificate", c["status"],
+            cards.append(("Security Certificate", c["status"],
                           f"Residual risk {c['residual_risk_score']:.1f}/{c['residual_risk_ceiling']} "
                           "against fixed pass/fail thresholds.", ccolor))
         except Exception:  # noqa: BLE001
@@ -597,12 +598,12 @@ def render_capability_strip(undef: dict | None, defd: dict | None) -> None:
         if undef:
             model_names.add(undef.get("target_model", ""))
         model_names.discard("")
-        cards.append(("Cross-model check", f"{len(model_names)} models",
+        cards.append(("Cross-Model Check", f"{len(model_names)} models",
                       "Identical suite and defense logic re-run on a second target model.",
                       "#334155"))
 
     st.markdown(
-        "<div class='section-head'><h4>What this proves</h4></div>",
+        "<div class='section-head'><h4>What This Proves</h4></div>",
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -642,12 +643,12 @@ def render_certificate() -> None:
     gaps_txt = "; ".join(cert["gaps"]) if cert["gaps"] else "no residual gaps"
     st.markdown(
         f"<div class='cert' style='--c:{color}'>"
-        f"<div class='kicker'>{term('Pre-deployment security certificate', band_tip)}</div>"
+        f"<div class='kicker'>{term('Pre-Deployment Security Certificate', band_tip)}</div>"
         f"<div class='stamp'>{term(cert['status'], GLOSSARY.get(cert['status'].lower(), band_tip))}</div>"
-        f"<div class='row'>{term('Residual risk', 'Severity-weighted: 0 = every attack blocked.')} "
+        f"<div class='row'>{term('Residual Risk', 'Severity-weighted: 0 = every attack blocked.')} "
         f"<b>{cert['residual_risk_score']} / {cert['residual_risk_ceiling']}</b> "
         f"({cert['residual_risk_band']}) &nbsp;&middot;&nbsp; "
-        f"{term('false positives', 'Benign requests wrongly blocked by the defense.')} "
+        f"{term('False Positives', 'Benign requests wrongly blocked by the defense.')} "
         f"<b>{cert['false_positive_rate']:.0f}%</b></div>"
         f"<div class='why'>{gaps_txt}</div>"
         f"</div>",
@@ -674,7 +675,7 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
 
     st.markdown(
         "<div class='section-head'><h4>"
-        + term("Residual risk", "Severity-weighted score: 0 = every attack blocked.")
+        + term("Residual Risk", "Severity-weighted score: 0 = every attack blocked.")
         + "</h4></div>",
         unsafe_allow_html=True,
     )
@@ -692,7 +693,7 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
         if ur and dr:
             drop = ur["absolute"] - dr["absolute"]
             pct = 100 * drop / ur["absolute"] if ur["absolute"] else 0
-            st.metric("Risk reduction", f"{drop:.1f} pts", delta=f"-{pct:.0f}%",
+            st.metric("Risk Reduction", f"{drop:.1f} pts", delta=f"-{pct:.0f}%",
                       delta_color="inverse")
         st.caption("0 = fully blocked, 24 = fully succeeds.")
 
@@ -713,7 +714,7 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
         else:
             st.success("**No attack succeeds or partially succeeds after defense.**")
 
-    with st.expander("Risk by attack category"):
+    with st.expander("Risk by Attack Category"):
         cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
         rows = []
         for c in cats:
@@ -730,8 +731,8 @@ def render_overview(undef: dict | None, defd: dict | None) -> None:
     if defd and defd.get("false_positive"):
         st.markdown(
             "<div class='section-head'><h4>"
-            + term("False positives", "Legitimate requests wrongly blocked by the defense.")
-            + " on benign use</h4></div>",
+            + term("False Positives", "Legitimate requests wrongly blocked by the defense.")
+            + " on Benign Use</h4></div>",
             unsafe_allow_html=True,
         )
         render_benign(defd)
@@ -773,9 +774,9 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
     if undef:
         sources["Undefended"] = {r["attack_id"]: r for r in undef["attacks"]}
     if naive:
-        sources["Naive filter"] = {r["attack_id"]: r for r in naive["attacks"]}
+        sources["Naive Filter"] = {r["attack_id"]: r for r in naive["attacks"]}
     if defd:
-        sources["Classifier defense"] = {r["attack_id"]: r for r in defd["attacks"]}
+        sources["Classifier Defense"] = {r["attack_id"]: r for r in defd["attacks"]}
     if not sources:
         st.info("No results yet. Load a saved run or use **Run suite** in the sidebar.")
         return
@@ -878,7 +879,7 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
     }
     rank = {"blocked": 0, "partial": 1, "succeeded": 2, "error": -1}
 
-    st.markdown("#### Block rate by category")
+    st.markdown("#### Block Rate by Category")
     cats = ["direct", "indirect", "tool_misuse", "exfiltration"]
     rows = []
     for c in cats + ["ALL"]:
@@ -889,7 +890,7 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
             row[k] = round(100 * b / len(vals), 0) if vals else 0
         rows.append(row)
     df = pd.DataFrame(rows).set_index("category")
-    df.columns = ["no defense", "naive filter", "classifier"]
+    df.columns = ["No Defense", "Naive Filter", "Classifier"]
     st.bar_chart(df, height=320, stack=False,
                  color=["#94a3b8", "#92400e", "#0a6847"])
     st.caption("% of attacks in each category fully blocked.")
@@ -911,7 +912,7 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
         worse[0] if worse else None,
     )
     if demo_id:
-        st.markdown(f"#### Same attack, two defenses — `{demo_id}`")
+        st.markdown(f"#### Same Attack, Two Defenses — `{demo_id}`")
         cn, cc = st.columns(2)
         with cn:
             nr = by["naive"][demo_id]
@@ -931,15 +932,44 @@ def render_comparison(undef: dict | None, defd: dict | None) -> None:
 
 def render_report() -> None:
     from report import generate_report
+    from severity import residual_risk
+    from certificate import build_certificate
 
     u, d = RUNS / "undefended.json", RUNS / "defended.json"
     if not (u.exists() and d.exists()):
         st.info("Need both runs/undefended.json and runs/defended.json.")
         return
+
+    u_risk = residual_risk(json.loads(u.read_text())["attacks"])
+    d_risk = residual_risk(json.loads(d.read_text())["attacks"])
+    try:
+        cert = build_certificate(d)
+        status, fp_rate = cert["status"], f"{cert['false_positive_rate']:.0f}"
+    except Exception:  # noqa: BLE001
+        status, fp_rate = "?", "?"
+    color = {"PASS": "#0a6847", "CONDITIONAL PASS": "#92400e", "FAIL": "#8f1d1d"}.get(
+        status, "#475569"
+    )
+
+    st.markdown(
+        "<div class='panel' style='display:flex;gap:2.2rem;align-items:center;flex-wrap:wrap'>"
+        "<div><div style='font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;"
+        f"color:var(--muted)'>Certificate</div><div style='font-weight:800;font-size:1.3rem;"
+        f"color:{color}'>{status}</div></div>"
+        "<div><div style='font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;"
+        f"color:var(--muted)'>Residual Risk</div><div style='font-weight:700;font-size:1.1rem'>"
+        f"{u_risk['absolute']:.1f} &rarr; {d_risk['absolute']:.1f} / {d_risk['ceiling']}</div></div>"
+        "<div><div style='font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;"
+        f"color:var(--muted)'>False Positives</div><div style='font-weight:700;font-size:1.1rem'>"
+        f"{fp_rate}%</div></div></div>",
+        unsafe_allow_html=True,
+    )
+
     md = generate_report(u, d)
     st.download_button("Download report.md", md, file_name="report.md",
                        mime="text/markdown")
-    st.markdown(md)
+    with st.expander("Read Full Report"):
+        st.markdown(md)
 
 
 # ---------------------------------------------------------------------------
@@ -1013,16 +1043,40 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    t_over, t_theater, t_cmp, t_report = st.tabs(
-        ["Overview", "Attack Theater", "Compare defenses", "Report"]
-    )
-    with t_over:
+    TAB_NAMES = ["Overview", "Attack Theater", "Compare Defenses", "Report"]
+    nav_key, hist_key = "active_tab", "tab_history"
+    st.session_state.setdefault(nav_key, TAB_NAMES[0])
+    st.session_state.setdefault(hist_key, [])
+
+    changed = False
+    back_col, *tab_cols = st.columns([0.8] + [1.6] * len(TAB_NAMES))
+    with back_col:
+        if st.button("← Back", disabled=not st.session_state[hist_key],
+                     use_container_width=True, key="nav_back",
+                     help="Return to the tab you were on before."):
+            st.session_state[nav_key] = st.session_state[hist_key].pop()
+            changed = True
+    for col, name in zip(tab_cols, TAB_NAMES):
+        with col:
+            active = st.session_state[nav_key] == name
+            if st.button(name, type="primary" if active else "secondary",
+                         use_container_width=True, key=f"nav_{name}"):
+                if not active:
+                    st.session_state[hist_key].append(st.session_state[nav_key])
+                    st.session_state[nav_key] = name
+                    changed = True
+    if changed:
+        st.rerun()
+    st.markdown("<div style='margin-bottom:.6rem'></div>", unsafe_allow_html=True)
+
+    active_tab = st.session_state[nav_key]
+    if active_tab == "Overview":
         render_overview(undef, defd)
-    with t_theater:
+    elif active_tab == "Attack Theater":
         render_theater(undef, defd)
-    with t_cmp:
+    elif active_tab == "Compare Defenses":
         render_comparison(undef, defd)
-    with t_report:
+    elif active_tab == "Report":
         render_report()
 
 

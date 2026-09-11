@@ -69,7 +69,7 @@ ATTACK_REMEDIATION = {
     ),
 }
 
-# Remediation tied to each category-level finding (section 4b) - independent
+# Remediation tied to each category-level finding (section 7) - independent
 # of which single attack happens to be "most dangerous" in a given run.
 CATEGORY_REMEDIATION = {
     "direct": (
@@ -92,7 +92,7 @@ CATEGORY_REMEDIATION = {
     ),
 }
 
-# Category-level limitation notes for section 6.
+# Category-level limitation notes for section 9.
 CATEGORY_LIMITS = {
     "direct": "input screen never sees the user's message; caught only if it forces a leak the output screen recognises",
     "indirect": "a single classifier call decides; novel phrasing or encoding can slip past it",
@@ -146,7 +146,7 @@ def _block_rate(rows: list[dict]) -> str:
 def _threeway_section(u_atk: list[dict], d_atk: list[dict]) -> list[str]:
     """None vs naive keyword filter vs classifier - block rate per category.
     Naive results are read from runs/naive.json if present."""
-    md = ["## 2b. Defense comparison - none vs naive keyword filter vs classifier", ""]
+    md = ["## 3. Defense Comparison - None vs Naive Keyword Filter vs Classifier", ""]
     naive_path = RUNS_DIR / "naive.json"
     if not naive_path.exists():
         md.append(
@@ -200,7 +200,7 @@ def _cross_check_section(
 ) -> list[str]:
     """Residual risk per target model. Row 0 is the primary run (this report's
     committed data); extra models come from runs/cross_check.json if present."""
-    md = ["## 3b. Model cross-check (harness is model-agnostic)", ""]
+    md = ["## 5. Model Cross-Check (Harness Is Model-Agnostic)", ""]
 
     ur, dr = residual_risk(u_atk), residual_risk(d_atk)
     rows = [{
@@ -252,7 +252,7 @@ def _recommendation(d_atk: list[dict], fp_rate: float | str) -> str:
         return (
             f"**Recommendation: not production-ready as-is.** {len(part)} attack(s) "
             f"partially succeed ({names}) - out-of-scope action, no leak. Close "
-            f"this (section 4) or formally accept the risk before sign-off ({fp_txt})."
+            f"this (section 6) or formally accept the risk before sign-off ({fp_txt})."
         )
     names = ", ".join(f"`{r['attack_id']}`" for r in succ)
     return f"**Recommendation: do not deploy.** {len(succ)} attack(s) fully succeed after defense ({names})."
@@ -297,14 +297,14 @@ def generate_report(
     md.append("")
     md.append(
         "**Why now:** agentic tool use and indirect injection via retrieved "
-        "documents are a post-2023 surface. Static keyword filters (section 2b) "
+        "documents are a post-2023 surface. Static keyword filters (section 3) "
         "don't generalize to it - a semantic classifier is necessary now, not "
         "three years ago."
     )
     md.append("")
 
     # 1. Executive summary --------------------------------------------------
-    md.append("## 1. Executive summary")
+    md.append("## 1. Executive Summary")
     md.append("")
     u_succ = sum(1 for r in u_atk if r["verdict"] == "succeeded")
     d_succ = sum(1 for r in d_atk if r["verdict"] == "succeeded")
@@ -322,7 +322,7 @@ def generate_report(
     # Security certificate (right after the executive summary) ------------
     try:
         cert = build_certificate(defended_path)
-        md.append("### Security certificate")
+        md.append("### Security Certificate")
         md.append("")
         md.append(render_certificate_md(cert))
         md.append("")
@@ -330,7 +330,7 @@ def generate_report(
         pass
 
     # 2. Per-attack results ----------------------------------------------
-    md.append("## 2. Per-attack results")
+    md.append("## 2. Per-Attack Results")
     md.append("")
     md.append("| attack_id | category | severity | verdict_before | verdict_after |")
     md.append("|---|---|---|---|---|")
@@ -369,8 +369,8 @@ def generate_report(
     # 2b. three-way defense comparison --------------------------------
     md.extend(_threeway_section(u_atk, d_atk))
 
-    # 3. Residual risk score -------------------------------------------
-    md.append("## 3. Residual risk score")
+    # 4. Residual risk score -------------------------------------------
+    md.append("## 4. Residual Risk Score")
     md.append("")
     md.append(
         "```\n"
@@ -393,8 +393,8 @@ def generate_report(
     # 3b. model cross-check ------------------------------------------
     md.extend(_cross_check_section(u_atk, d_atk, u.get("target_model", "?")))
 
-    # 4. Most dangerous attack still getting through ------------------
-    md.append("## 4. Most dangerous attack that still gets through")
+    # 6. Most dangerous attack still getting through ------------------
+    md.append("## 6. Most Dangerous Attack That Still Gets Through")
     md.append("")
     residual = [r for r in d_atk if r["verdict"] in ("succeeded", "partial")]
     if not residual:
@@ -420,7 +420,7 @@ def generate_report(
         md.append("```")
         md.append("")
         fix = ATTACK_REMEDIATION.get(
-            aid, f"See section 4b for `{worst['category']}`."
+            aid, f"See section 7 for `{worst['category']}`."
         )
         md.append(f"**Remediation:** {fix}")
 
@@ -432,7 +432,7 @@ def generate_report(
             for r in sorted(others, key=attack_risk, reverse=True):
                 oid = r["attack_id"]
                 ofix = ATTACK_REMEDIATION.get(
-                    oid, f"see section 4b for `{r['category']}`."
+                    oid, f"see section 7 for `{r['category']}`."
                 )
                 md.append(
                     f"- **`{oid}`** ({severity_of(oid)}, **{r['verdict']}**, "
@@ -440,9 +440,9 @@ def generate_report(
                 )
     md.append("")
 
-    # 4b. remediation by category - ties a fix to EACH category-level
+    # 7. remediation by category - ties a fix to EACH category-level
     # finding, not only the single "most dangerous" attack above.
-    md.append("## 4b. Remediation by category")
+    md.append("## 7. Remediation by Category")
     md.append("")
     for cat in ["direct", "indirect", "tool_misuse", "exfiltration"]:
         row = next((x for x in rows if x["category"] == cat), None)
@@ -457,8 +457,8 @@ def generate_report(
         md.append(f"- **{cat}**{status}: {CATEGORY_REMEDIATION[cat]}")
     md.append("")
 
-    # 5. False-positive rate ---------------------------------------
-    md.append("## 5. False-positive rate on benign requests")
+    # 8. False-positive rate ---------------------------------------
+    md.append("## 8. False-Positive Rate on Benign Requests")
     md.append("")
     if fp:
         md.append(
@@ -479,8 +479,8 @@ def generate_report(
         md.append("_No false-positive data in defended.json._")
     md.append("")
 
-    # 6. Limitations ----------------------------------------------
-    md.append("## 6. What this defense does NOT fully stop")
+    # 9. Limitations ----------------------------------------------
+    md.append("## 9. What This Defense Does NOT Fully Stop")
     md.append("")
     not_fully = []
     for cat in ["direct", "indirect", "tool_misuse", "exfiltration"]:
