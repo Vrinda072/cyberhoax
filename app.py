@@ -58,7 +58,8 @@ st.markdown(
                background: var(--wash); }
       .block-container { padding-top: 2rem; max-width: 1220px; }
       [data-testid="stToolbarActions"], [data-testid="stAppDeployButton"],
-      [data-testid="stMainMenu"], [data-testid="stDecoration"], #MainMenu, footer { display: none; }
+      [data-testid="stMainMenu"], [data-testid="stDecoration"], #MainMenu, footer,
+      [data-testid="stHeaderActionElements"] { display: none; }
       h1, h2, h3, h4 { letter-spacing: -0.01em; color: var(--ink); }
 
       /* --- sidebar: pinned open at all times, not collapsible --- */
