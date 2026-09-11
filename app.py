@@ -20,12 +20,16 @@ from __future__ import annotations
 
 import html as html_lib
 import json
+import os
 import re
 import time
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()  # picks up GROQ_API_KEY from .env so it doesn't need `export`ing
 
 RUNS = Path(__file__).parent / "runs"
 
@@ -483,6 +487,15 @@ def run_live(mode: str, trials: int, threshold: float) -> None:
     from harness.false_positive_check import run_false_positive_check
     from harness.runner import run_attack
     from config import DEFENSE_MODEL, JUDGE_MODEL, TARGET_MODEL
+
+    if not os.environ.get("GROQ_API_KEY"):
+        st.error(
+            "**GROQ_API_KEY is not set.** Get a free key at "
+            "[console.groq.com](https://console.groq.com), then either add "
+            "`GROQ_API_KEY=your_key_here` to a `.env` file next to `app.py`, "
+            "or run `export GROQ_API_KEY=your_key_here` before starting Streamlit."
+        )
+        return
 
     client = Groq(max_retries=5)
     do_undef = mode in ("Undefended only", "Both (before / after)")
