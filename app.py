@@ -231,7 +231,8 @@ st.markdown(
       .tip { border-bottom: 1px dotted currentColor; cursor: help; position: relative; }
       .tip::after {
         content: attr(data-tip); position: absolute; bottom: 130%; left: 50%;
-        transform: translateX(-50%); background: var(--ink); color: #fff;
+        transform: translateX(-50%); background: #ffffff; color: #0f172a;
+        border: 1px solid #dbe1e8;
         padding: 6px 10px; border-radius: 6px; font-size: .74rem; font-weight: 400;
         font-style: normal; line-height: 1.35; text-transform: none; letter-spacing: normal;
         white-space: normal; width: max-content; max-width: 210px; text-align: left;
