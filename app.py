@@ -842,7 +842,7 @@ def render_benign(defd: dict | None) -> None:
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
-@st.fragment(run_every=1.0)
+@st.fragment(run_every=1.0 if st.session_state.get("replay_running") else None)
 def render_theater(undef: dict | None, defd: dict | None) -> None:
     """Step through one attack turn-by-turn - watch it unfold like a real chat,
     then land on a stamped verdict. Pure replay of captured transcripts: $0,
@@ -889,8 +889,7 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
                         width="stretch"):
                 st.session_state[mode_key] = name
                 st.session_state[f"theater__{aid}__{name}"] = 0
-                st.session_state["replay_running"] = True
-                st.session_state["replay_tick"] = 0.0
+                st.session_state["replay_running"] = False
                 st.rerun()
     mode = st.session_state[mode_key]
 
@@ -912,6 +911,7 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
     step = st.session_state.get(key, 0)
     previous_step = step
     running = st.session_state.get("replay_running", False)
+    was_running = running
     if st.button("Pause replay" if running else "Play replay", key="replay_toggle"):
         running = not running
         if running and step >= n:
@@ -940,6 +940,12 @@ def render_theater(undef: dict | None, defd: dict | None) -> None:
         running = False
     st.session_state["replay_running"] = running
     st.session_state[key] = step
+    if running != was_running:
+        # Play/Pause toggles the fragment's own auto-rerun interval (set from
+        # session_state at decoration time), which only re-evaluates on a full
+        # rerun - without this, starting/stopping playback wouldn't take
+        # effect until some unrelated full-page rerun happened to occur.
+        st.rerun()
 
     st.progress(step / n if n else 0.0, f"turn {step} of {n}")
     if aid == "indirect_01_system_override":
