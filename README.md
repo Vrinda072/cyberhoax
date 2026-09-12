@@ -1,5 +1,7 @@
 # LLM & AI Agent Security Testing Harness
 
+**Live demo:** [cyberhoax.streamlit.app](https://cyberhoax.streamlit.app)
+
 A testing harness that attacks a self-built LLM agent across four categories —
 direct injection, indirect injection, tool misuse, and exfiltration — scores
 each attempt with an independent judge, tests a defense layer against the same
@@ -27,7 +29,7 @@ before it ships.
 
 ```bash
 # 1. Get a free Groq API key at https://console.groq.com
-# 2. Set it
+# 2. Set it (or add GROQ_API_KEY=... to a .env file next to app.py)
 export GROQ_API_KEY=your_key_here
 
 # 3. Install dependencies
@@ -38,8 +40,10 @@ python3 -m venv .venv
 `requirements.txt`:
 ```
 groq>=1.7.0
-streamlit>=1.30
+streamlit>=1.40
 pandas>=2.0
+altair>=5.0
+python-dotenv>=1.0
 ```
 
 Run the app:
